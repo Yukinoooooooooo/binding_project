@@ -16,6 +16,7 @@
 #include "Topic.h"
 #include "DomainParticipant.h"
 #include "ZRBuiltinTypesTypeSupport.h"
+#include "ZRBuiltinTypesDataWriter.h"
 
 namespace py = pybind11;
 
@@ -421,6 +422,57 @@ PYBIND11_MODULE(_zrdds_publish, m) {
         DDS::ReturnCode_t ret = it->second->end_coherent_changes();
         return (ret == DDS::RETCODE_OK);
     }, py::arg("publisher_id"), "End coherent changes");
+    
+    // Data writing functions
+    m.def("write_bytes_data", [](int datawriter_id, const std::string& data) -> bool {
+        auto it = PublishDDSManager::data_writers.find(datawriter_id);
+        if (it == PublishDDSManager::data_writers.end() || !it->second) {
+            return false;
+        }
+        
+        DDS::DataWriter* writer = it->second;
+        
+        // Use DDS::Bytes for simple data writing
+        DDS::Bytes bytes_data;
+        DDS_OctetSeq_set_length(&bytes_data.value, data.length());
+        for (size_t i = 0; i < data.length(); ++i) {
+            DDS::Octet* ref = DDS_OctetSeq_get_reference(&bytes_data.value, i);
+            if (ref) *ref = static_cast<unsigned char>(data[i]);
+        }
+        
+        // Cast to BytesDataWriter for typed writing
+        DDS::BytesDataWriter* bytes_writer = 
+            dynamic_cast<DDS::BytesDataWriter*>(writer);
+        if (!bytes_writer) {
+            return false;
+        }
+        
+        DDS::ReturnCode_t ret = bytes_writer->write(bytes_data, DDS::HANDLE_NIL_NATIVE);
+        return (ret == DDS::RETCODE_OK);
+    }, py::arg("datawriter_id"), py::arg("data"), "Write bytes data to DataWriter");
+    
+    m.def("write_string_data", [](int datawriter_id, const std::string& data) -> bool {
+        auto it = PublishDDSManager::data_writers.find(datawriter_id);
+        if (it == PublishDDSManager::data_writers.end() || !it->second) {
+            return false;
+        }
+        
+        DDS::DataWriter* writer = it->second;
+        
+        // Use DDS::String for string data writing  
+        DDS::String string_data;
+        string_data = const_cast<char*>(data.c_str());
+        
+        // Cast to StringDataWriter for typed writing
+        DDS::StringDataWriter* string_writer = 
+            dynamic_cast<DDS::StringDataWriter*>(writer);
+        if (!string_writer) {
+            return false;
+        }
+        
+        DDS::ReturnCode_t ret = string_writer->write(string_data, DDS::HANDLE_NIL_NATIVE);
+        return (ret == DDS::RETCODE_OK);
+    }, py::arg("datawriter_id"), py::arg("data"), "Write string data to DataWriter");
     
     // Utility functions
     m.def("get_publisher_count", []() {

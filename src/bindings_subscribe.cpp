@@ -3,6 +3,8 @@
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
 #include <pybind11/chrono.h>
+#include <chrono>
+#include <thread>
 
 // ZRDDS C++ headers
 #include "Subscriber.h"
@@ -16,6 +18,10 @@
 #include "ZRDDSCppWrapper.h"
 #include "Topic.h"
 #include "DomainParticipant.h"
+#include "ZRBuiltinTypesTypeSupport.h"
+#include "ZRBuiltinTypesDataReader.h"
+#include "ZRDDSDataReader.h"
+
 
 namespace py = pybind11;
 
@@ -415,6 +421,62 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
         DDS::ReturnCode_t ret = it->second->notify_datareaders();
         return (ret == DDS::RETCODE_OK);
     }, py::arg("subscriber_id"), "Notify data readers");
+    
+    // Data reading functions
+    m.def("read_bytes_data", [](int datareader_id) -> py::object {
+        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
+        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
+            return py::none();
+        }
+        
+        DDS::DataReader* reader = it->second;
+        
+        // Temporarily disabled due to template compatibility issues
+        // TODO: Fix ZRDDSDataReader template compatibility
+        return py::none();
+    }, py::arg("datareader_id"), "Read bytes data from DataReader");
+    
+    m.def("read_string_data", [](int datareader_id) -> py::object {
+        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
+        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
+            return py::none();
+        }
+        
+        DDS::DataReader* reader = it->second;
+        
+        // Temporarily disabled due to template compatibility issues
+        // TODO: Fix ZRDDSDataReader template compatibility
+        return py::none();
+    }, py::arg("datareader_id"), "Read string data from DataReader");
+    
+    m.def("wait_for_data", [](int datareader_id, int timeout_seconds = 5) -> bool {
+        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
+        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
+            return false;
+        }
+        
+        DDS::DataReader* reader = it->second;
+        
+        // Simple polling approach - wait for data to become available
+        auto start_time = std::chrono::steady_clock::now();
+        auto timeout = std::chrono::seconds(timeout_seconds);
+        
+        while (std::chrono::steady_clock::now() - start_time < timeout) {
+            // Check if data is available by trying to read
+            DDS::BytesSeq data_seq;
+            DDS::SampleInfoSeq info_seq;
+            
+            // Temporarily disabled due to template compatibility issues
+            // TODO: Fix ZRDDSDataReader template compatibility
+            // For now, just wait and return false
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+            // Wait a bit before checking again
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        
+        return false;  // Timeout
+    }, py::arg("datareader_id"), py::arg("timeout_seconds") = 5, "Wait for data to become available");
     
     // ReadCondition operations
     m.def("readcondition_get_datareader", [](int condition_id) -> int {

@@ -11,7 +11,7 @@ sys.path.insert(0, 'zrpy')
 def test_publisher_integration():
     """Test publisher integration using all modules"""
     print("=== ZRDDS Publisher Integration Test ===")
-    
+     
     try:
         # Import all modules
         import _zrdds_domain
@@ -65,14 +65,14 @@ def test_publisher_integration():
         _zrdds_topic.register_participant(domain_id, participant_ptr)
         print("✓ Participant registered with topic module")
         
-        # 7. Create topic
+        # 7. Create topic (Bytes type for data writing)
         print("7. Creating topic...")
         topic_name = "DATARECEIVEBYLISTENER"  # Same as C++ example
-        topic_result = _zrdds_topic.create_topic(domain_id, topic_name)
+        topic_result = _zrdds_topic.create_topic(domain_id, topic_name, "Bytes")  # Explicit Bytes type
         if not topic_result:
             print("✗ Failed to create topic")
             return False
-        print(f"✓ Topic created: {topic_name}")
+        print(f"✓ Topic created: {topic_name} (Bytes type)")
         
         # 8. Get topic pointer
         print("8. Getting topic pointer...")
@@ -155,21 +155,40 @@ def test_publisher_integration():
             print(f"⚠ Exception when attaching listener: {e}")
             print("Continuing without listener attachment...")
         
-        # 16. Simulate data writing (since we don't have ShapeType)
-        print("16. Simulating data writing...")
-        print("Note: ShapeType data writing is not implemented yet")
-        print("This would require additional type support modules")
+        # 16. Test data writing
+        print("16. Testing data writing...")
         
-        # 17. Show entity counts
-        print("17. Entity counts:")
+        # Since we created a Bytes type topic, only bytes data will work
+        print("Note: Topic was created with 'Bytes' type, so only bytes data writing is supported")
+        
+        # Write bytes data  
+        test_bytes = "Data Receive by Listener - Python Version"
+        bytes_success = _zrdds_publish.write_bytes_data(datawriter_id, test_bytes)
+        if bytes_success:
+            print(f"✓ Successfully wrote bytes data: '{test_bytes}'")
+        else:
+            print("⚠ Failed to write bytes data")
+        
+        # Simulate continuous data sending (like C++ example)
+        print("17. Simulating continuous data sending...")
+        for i in range(3):
+            message = f"Message #{i+1} from Python Publisher"
+            if _zrdds_publish.write_bytes_data(datawriter_id, message):
+                print(f"   ✓ Sent: {message}")
+            else:
+                print(f"   ✗ Failed to send: {message}")
+            time.sleep(1)  # Sleep 1 second between messages
+        
+        # 18. Show entity counts
+        print("18. Entity counts:")
         print(f"  - Domain participants: {_zrdds_domain.get_participant_count()}")
         print(f"  - Topics: {_zrdds_topic.get_topic_count()}")
         print(f"  - Publishers: {_zrdds_publish.get_publisher_count()}")
         print(f"  - DataWriters: {_zrdds_publish.get_datawriter_count()}")
         print(f"  - Listeners: {_zrdds_listener.get_datawriter_listener_count()}")
         
-        # 18. Cleanup
-        print("18. Cleaning up...")
+        # 19. Cleanup
+        print("19. Cleaning up...")
         
         # Delete datawriter first (child entity)
         if datawriter_id != -1:
