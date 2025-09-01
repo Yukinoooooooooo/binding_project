@@ -1,0 +1,34 @@
+# Build directories
+build/
+Build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE files
+.vscode/
+.vs/
+*.user
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# DDS log files
+*.ddslog
+
+# Temporary files
+*.tmp
+*.temp
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Visual Studio
+*.vcxproj
+*.vcxproj.filters
+*.sln
