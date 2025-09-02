@@ -45,7 +45,7 @@ def test_publisher_integration():
         
         # 4. Create domain participant
         print("4. Creating domain participant...")
-        domain_id = 80  # Same as C++ example
+        domain_id = 80  # 
         participant_id = _zrdds_domain.create_domain_participant(domain_id, qos_id)
         if participant_id == -1:
             print("✗ Failed to create domain participant")

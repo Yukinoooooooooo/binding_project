@@ -93,8 +93,13 @@ def run_subscriber():
         
         _zrdds_subscribe.register_participant(80, participant_ptr)
         _zrdds_subscribe.register_topic("COMM_TEST", topic_ptr)
-        subscriber_id = _zrdds_subscribe.create_subscriber(80)
-        datareader_id = _zrdds_subscribe.create_datareader(subscriber_id, "COMM_TEST")
+        
+        # Create QoS for subscriber and datareader
+        subscriber_qos_id = _zrdds_subscribe.create_subscriber_qos()
+        datareader_qos_id = _zrdds_subscribe.create_datareader_qos()
+        
+        subscriber_id = _zrdds_subscribe.create_subscriber(80, subscriber_qos_id)
+        datareader_id = _zrdds_subscribe.create_datareader(subscriber_id, "COMM_TEST", datareader_qos_id)
         
         print("📡 Subscriber ready, waiting for data...")
         
@@ -119,6 +124,8 @@ def run_subscriber():
         # Cleanup
         _zrdds_subscribe.delete_datareader(datareader_id)
         _zrdds_subscribe.delete_subscriber(subscriber_id)
+        _zrdds_subscribe.delete_datareader_qos(datareader_qos_id)
+        _zrdds_subscribe.delete_subscriber_qos(subscriber_qos_id)
         _zrdds_topic.delete_topic("COMM_TEST")
         _zrdds_domain.delete_domain_participant(participant_id)
         _zrdds_domain.delete_participant_qos(qos_id)
