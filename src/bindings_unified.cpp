@@ -13,7 +13,10 @@
 #include "DataWriter.h"
 #include "DataReader.h"
 #include "WaitSet.h"
-
+#include "ShapeType.h"
+#include "ShapeTypeTypeSupport.h"
+#include "ShapeTypeDataReader.h"
+#include "ShapeTypeDataWriter.h"
 
 namespace py = pybind11;
 
@@ -29,17 +32,11 @@ struct UnifiedDDSManager {
     
     // 辅助实体
     static DDS::WaitSet* waitset;
-    // static DDS::GuardCondition* guard_condition;
-    // static DDS::ReadCondition* read_condition;
     
     // 类型支持
-    static DDS::ShapeTypeTypeSupport* type_support;
+    static ShapeTypeTypeSupport* type_support;
     
     static void cleanup() {
-        // if (read_condition && datareader) {
-        //     datareader->delete_readcondition(read_condition);
-        //     read_condition = nullptr;
-        // }
         if (datawriter) {
             if (publisher) {
                 publisher->delete_datawriter(datawriter);
@@ -81,10 +78,6 @@ struct UnifiedDDSManager {
             delete waitset;
             waitset = nullptr;
         }
-        // if (guard_condition) {
-        //     delete guard_condition;
-        //     guard_condition = nullptr;
-        // }
         if (type_support) {
             delete type_support;
             type_support = nullptr;
@@ -100,9 +93,7 @@ DDS::Subscriber* UnifiedDDSManager::subscriber = nullptr;
 DDS::DataWriter* UnifiedDDSManager::datawriter = nullptr;
 DDS::DataReader* UnifiedDDSManager::datareader = nullptr;
 DDS::WaitSet* UnifiedDDSManager::waitset = nullptr;
-// DDS::GuardCondition* UnifiedDDSManager::guard_condition = nullptr;
-// DDS::ReadCondition* UnifiedDDSManager::read_condition = nullptr;
-DDS::ShapeTypeTypeSupport* UnifiedDDSManager::type_support = nullptr;
+ShapeTypeTypeSupport* UnifiedDDSManager::type_support = nullptr;
 
 PYBIND11_MODULE(_zrdds_unified, m) {
     m.doc() = "Unified ZRDDS Module - Direct DDS Usage like C++";
@@ -119,7 +110,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return true;
     }, "Cleanup all DDS entities");
     
-    // 1. 创建域参与者 - 像C++那样直接
+    // 1. 创建域参与者
     m.def("create_participant", [](int domain_id) -> bool {
         if (UnifiedDDSManager::participant) {
             return true; // Already exists
@@ -151,7 +142,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         }
         
         // 注册类型支持 
-        UnifiedDDSManager::type_support = DDS::ShapeTypeTypeSupport::get_instance();
+        UnifiedDDSManager::type_support = ShapeTypeTypeSupport::get_instance();
         DDS::ReturnCode_t ret = UnifiedDDSManager::type_support->register_type(
             UnifiedDDSManager::participant, 
             nullptr
@@ -256,12 +247,24 @@ PYBIND11_MODULE(_zrdds_unified, m) {
             return false;
         }
         
- 
+        // 转换为ShapeTypeDataWriter
+        ShapeTypeDataWriter* shape_writer = 
+            dynamic_cast<ShapeTypeDataWriter*>(UnifiedDDSManager::datawriter);
+        if (!shape_writer) {
+            return false;
+        }
+        
+        // 创建数据样本
+        ShapeType sample;
+        ShapeTypeInitialize(&sample);
+        sample.x = 0;
+        sample.y = 0;
+        
         // 复制字符串数据到z字段
         strncpy(sample.z, data.c_str(), sizeof(sample.z) - 1);
         sample.z[sizeof(sample.z) - 1] = '\0';
         
-        // 写入数据 - 严格按照C++代码
+        // 写入数据
         DDS::ReturnCode_t ret = shape_writer->write(sample, DDS::HANDLE_NIL_NATIVE);
         return (ret == DDS::RETCODE_OK);
     }, py::arg("data"), "Write data");
@@ -272,24 +275,29 @@ PYBIND11_MODULE(_zrdds_unified, m) {
             return py::none();
         }
         
-     
+        // 转换为ShapeTypeDataReader
+        ShapeTypeDataReader* shape_reader = 
+            dynamic_cast<ShapeTypeDataReader*>(UnifiedDDSManager::datareader);
+        if (!shape_reader) {
+            return py::none();
+        }
         
-        // 使用take方法 - 严格按照C++代码
-        DDS::ShapeTypeSeq dataSeq;
-        DDS::SampleInfoSeq infoSeq;
+        // 使用take方法
+        ShapeTypeSeq dataSeq;
+        SampleInfoSeq infoSeq;
         
         DDS::ReturnCode_t ret = shape_reader->take(dataSeq, infoSeq, LENGTH_UNLIMITED,
             DDS::ANY_SAMPLE_STATE, DDS::ANY_VIEW_STATE, DDS::ANY_INSTANCE_STATE);
         
         if (ret == DDS::RETCODE_OK && DDS_SampleInfoSeq_get_length(&infoSeq) > 0) {
-            // 处理第一个有效数据 - 严格按照C++代码
+            // 处理第一个有效数据
             for (DDS::ULong i = 0; i < DDS_SampleInfoSeq_get_length(&infoSeq); ++i) {
-                DDS::SampleInfo* info = DDS_SampleInfoSeq_get_reference(&infoSeq, i);
+                SampleInfo* info = DDS_SampleInfoSeq_get_reference(&infoSeq, i);
                 if (info && info->valid_data) {
                     // 获取数据
-                    DDS::ShapeType* data = DDS_ShapeTypeSeq_get_reference(&dataSeq, i);
+                    ShapeType* data = DDS_ShapeTypeSeq_get_reference(&dataSeq, i);
                     if (data) {
-                        // 归还数据 - 严格按照C++代码
+                        // 归还数据
                         shape_reader->return_loan(dataSeq, infoSeq);
                         return py::str(data->z);
                     }

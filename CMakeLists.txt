@@ -14,7 +14,7 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 REQUIRED)
 
 # 设置要编译的模块类型
-# 可选值: basic, topic, domain, waitset, subscribe, publish, listener, main, unified
+# 可选值: basic, topic, domain, waitset, subscribe, publish, listener, main, unified, unified_multi
 # 默认编译 basic 模块
 if(NOT DEFINED MODULE_TYPE)
     set(MODULE_TYPE "basic")
@@ -53,6 +53,10 @@ elseif(MODULE_TYPE STREQUAL "unified")
     set(SOURCE_FILE "src/bindings_unified.cpp")
     set(MODULE_NAME "_zrdds_unified")
     set(MODULE_DESCRIPTION "Unified ZRDDS Module (Direct DDS Usage like C++)")
+elseif(MODULE_TYPE STREQUAL "unified_multi")
+    set(SOURCE_FILE "src/bindings_unified_multi.cpp")
+    set(MODULE_NAME "_zrdds_unified_multi")
+    set(MODULE_DESCRIPTION "Multi-Entity ZRDDS Module (Support Multiple Topics and Objects)")
 elseif(MODULE_TYPE STREQUAL "activator")
     set(SOURCE_FILE "src/bindings_activator.cpp")
     set(MODULE_NAME "_zrdds_activator")
@@ -62,7 +66,7 @@ elseif(MODULE_TYPE STREQUAL "activator")
 #     set(MODULE_NAME "zrdds_python"
 #     set(MODULE_DESCRIPTION "ZRDDS Main Module (Main functionality)"
 else()
-    message(FATAL_ERROR "Unknown MODULE_TYPE: ${MODULE_TYPE}. Supported types: basic, topic, domain, waitset, subscribe, publish, listener, unified, activator, main")
+    message(FATAL_ERROR "Unknown MODULE_TYPE: ${MODULE_TYPE}. Supported types: basic, topic, domain, waitset, subscribe, publish, listener, unified, unified_multi, activator, main")
 endif()
 
 # 显示当前编译的模块信息
@@ -84,7 +88,7 @@ target_link_libraries(${MODULE_NAME} PRIVATE ${ZRDDS_LIB_DIR}/ZRDDSCppz_VS2019.l
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/CPlusPlusInterface)
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/ZRDDSSecurityInterface)
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/ZRDDSCoreInterface)
-target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/Common/ShapeType)
+target_include_directories(${MODULE_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include/ShapeType)
 
 # 复制编译后的文件到目标目录
 add_custom_command(TARGET ${MODULE_NAME} POST_BUILD
