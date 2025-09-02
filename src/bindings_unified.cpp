@@ -13,14 +13,7 @@
 #include "DataWriter.h"
 #include "DataReader.h"
 #include "WaitSet.h"
-// #include "GuardCondition.h"
-// #include "ReadCondition.h"
-// #include "Condition.h"
-// #include "Duration_t.h"
-#include "ShapeType.h"
-#include "ShapeTypeTypeSupport.h"
-#include "ShapeTypeDataWriter.h"
-#include "ShapeTypeDataReader.h"
+
 
 namespace py = pybind11;
 
@@ -147,7 +140,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::participant != nullptr);
     }, py::arg("domain_id"), "Create DomainParticipant");
     
-    // 2. 创建主题 - 严格按照C++代码
+    // 2. 创建主题 
     m.def("create_topic", [](const std::string& topic_name) -> bool {
         if (UnifiedDDSManager::topic) {
             return true; // Already exists
@@ -157,7 +150,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
             return false; // Need participant first
         }
         
-        // 注册类型支持 - 严格按照C++代码
+        // 注册类型支持 
         UnifiedDDSManager::type_support = DDS::ShapeTypeTypeSupport::get_instance();
         DDS::ReturnCode_t ret = UnifiedDDSManager::type_support->register_type(
             UnifiedDDSManager::participant, 
@@ -167,7 +160,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
             return false;
         }
         
-        // 创建主题 - 严格按照C++代码
+        // 创建主题
         UnifiedDDSManager::topic = UnifiedDDSManager::participant->create_topic(
             topic_name.c_str(),
             UnifiedDDSManager::type_support->get_type_name(),
@@ -179,7 +172,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::topic != nullptr);
     }, py::arg("topic_name"), "Create Topic");
     
-    // 3. 创建发布者 - 直接使用participant
+    // 3. 创建发布者 
     m.def("create_publisher", []() -> bool {
         if (UnifiedDDSManager::publisher) {
             return true; // Already exists
@@ -198,7 +191,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::publisher != nullptr);
     }, "Create Publisher");
     
-    // 4. 创建订阅者 - 直接使用participant
+    // 4. 创建订阅者 
     m.def("create_subscriber", []() -> bool {
         if (UnifiedDDSManager::subscriber) {
             return true; // Already exists
@@ -217,7 +210,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::subscriber != nullptr);
     }, "Create Subscriber");
     
-    // 5. 创建数据写入器 - 直接使用publisher和topic
+    // 5. 创建数据写入器 
     m.def("create_datawriter", []() -> bool {
         if (UnifiedDDSManager::datawriter) {
             return true; // Already exists
@@ -237,7 +230,7 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::datawriter != nullptr);
     }, "Create DataWriter");
     
-    // 6. 创建数据读取器 - 直接使用subscriber和topic
+    // 6. 创建数据读取器 
     m.def("create_datareader", []() -> bool {
         if (UnifiedDDSManager::datareader) {
             return true; // Already exists
@@ -257,25 +250,13 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (UnifiedDDSManager::datareader != nullptr);
     }, "Create DataReader");
     
-    // 7. 写入数据 - 严格按照C++代码
+    // 7. 写入数据 
     m.def("write_data", [](const std::string& data) -> bool {
         if (!UnifiedDDSManager::datawriter) {
             return false;
         }
         
-        // 转换为ShapeTypeDataWriter - 严格按照C++代码
-        DDS::ShapeTypeDataWriter* shape_writer = 
-            dynamic_cast<DDS::ShapeTypeDataWriter*>(UnifiedDDSManager::datawriter);
-        if (!shape_writer) {
-            return false;
-        }
-        
-        // 创建数据样本 - 严格按照C++代码
-        DDS::ShapeType sample;
-        DDS::ShapeTypeInitialize(&sample);
-        sample.x = 0;
-        sample.y = 0;
-        
+ 
         // 复制字符串数据到z字段
         strncpy(sample.z, data.c_str(), sizeof(sample.z) - 1);
         sample.z[sizeof(sample.z) - 1] = '\0';
@@ -285,18 +266,13 @@ PYBIND11_MODULE(_zrdds_unified, m) {
         return (ret == DDS::RETCODE_OK);
     }, py::arg("data"), "Write data");
     
-    // 8. 读取数据 - 严格按照C++代码使用take方法
+    // 8. 读取数据 
     m.def("read_data", []() -> py::object {
         if (!UnifiedDDSManager::datareader) {
             return py::none();
         }
         
-        // 转换为ShapeTypeDataReader - 严格按照C++代码
-        DDS::ShapeTypeDataReader* shape_reader = 
-            dynamic_cast<DDS::ShapeTypeDataReader*>(UnifiedDDSManager::datareader);
-        if (!shape_reader) {
-            return py::none();
-        }
+     
         
         // 使用take方法 - 严格按照C++代码
         DDS::ShapeTypeSeq dataSeq;

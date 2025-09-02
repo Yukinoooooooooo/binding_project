@@ -84,6 +84,7 @@ target_link_libraries(${MODULE_NAME} PRIVATE ${ZRDDS_LIB_DIR}/ZRDDSCppz_VS2019.l
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/CPlusPlusInterface)
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/ZRDDSSecurityInterface)
 target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/ZRDDSCoreInterface)
+target_include_directories(${MODULE_NAME} PRIVATE ${ZRDDS_INCLUDE_DIR}/Common/ShapeType)
 
 # 复制编译后的文件到目标目录
 add_custom_command(TARGET ${MODULE_NAME} POST_BUILD

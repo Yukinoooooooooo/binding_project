@@ -13,12 +13,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zrpy'))
 
 def test_unified_dds():
-    """测试统一DDS模块 - 像C++那样直接调用"""
-    print("🚀 统一DDS模块测试")
-    print("=" * 60)
-    print("目标：像C++代码那样直接使用DDS功能")
-    print("=" * 60)
-    
+
     try:
         import _zrdds_unified as dds
         
@@ -29,8 +24,7 @@ def test_unified_dds():
             return False
         print("   ✓ 初始化成功")
         
-        # 1. 创建域参与者 - 像C++那样直接
-        print("\n📡 创建域参与者...")
+        # 1. 创建域参与者 -        print("\n📡 创建域参与者...")
         if not dds.create_participant(80):
             print("   ✗ 创建域参与者失败")
             return False
