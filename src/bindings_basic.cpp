@@ -20,61 +20,44 @@
 
 namespace py = pybind11;
 
-// Global storage for basic DDS entities
+// Simple DDS Manager - like your simple DDS module
 struct BasicDDSManager {
-    static std::map<int, DDS::GuardCondition*> guard_conditions;
-    static std::map<int, DDS::WaitSet*> wait_sets;
-    static std::map<int, DDS::ConditionSeq*> condition_seqs;
-    
-    static int next_id;
-    
-    static int generate_id() { return ++next_id; }
+    static DDS::GuardCondition* guard_condition;
+    static DDS::WaitSet* waitset;
+    static DDS::ConditionSeq* condition_seq;
     
     static void cleanup() {
-        // Clean up guard conditions
-        for (auto& pair : guard_conditions) {
-            if (pair.second) {
-                delete pair.second;
-            }
+        if (condition_seq) {
+            delete condition_seq;
+            condition_seq = nullptr;
         }
-        
-        // Clean up wait sets
-        for (auto& pair : wait_sets) {
-            if (pair.second) {
-                delete pair.second;
-            }
+        if (waitset) {
+            delete waitset;
+            waitset = nullptr;
         }
-        
-        // Clean up condition sequences
-        for (auto& pair : condition_seqs) {
-            if (pair.second) {
-                delete pair.second;
-            }
+        if (guard_condition) {
+            delete guard_condition;
+            guard_condition = nullptr;
         }
-        
-        // Clear all maps
-        guard_conditions.clear();
-        wait_sets.clear();
-        condition_seqs.clear();
     }
 };
 
-std::map<int, DDS::GuardCondition*> BasicDDSManager::guard_conditions;
-std::map<int, DDS::WaitSet*> BasicDDSManager::wait_sets;
-std::map<int, DDS::ConditionSeq*> BasicDDSManager::condition_seqs;
-int BasicDDSManager::next_id = 2000;
+// Initialize static members
+DDS::GuardCondition* BasicDDSManager::guard_condition = nullptr;
+DDS::WaitSet* BasicDDSManager::waitset = nullptr;
+DDS::ConditionSeq* BasicDDSManager::condition_seq = nullptr;
 
 // Basic module wrapper
 PYBIND11_MODULE(_zrdds_basic, m) {
-    m.doc() = "ZRDDS Python Wrapper - Basic Module (C++ Interface with Factory Pattern)";
+    m.doc() = "ZRDDS Python Wrapper - Basic Module (Simple Direct Interface)";
     
     // Basic functions
     m.def("hello", []() {
-        return "Hello from ZRDDS Basic Module with Factory Pattern!";
+        return "Hello from ZRDDS Basic Module - Simple Direct Interface!";
     });
     
     m.def("get_version", []() {
-        return "ZRDDS Basic Module v2.0.0 - Factory Pattern Implementation";
+        return "ZRDDS Basic Module v3.0.0 - Simple Direct Implementation";
     });
     
     // Initialize basic module
@@ -84,100 +67,77 @@ PYBIND11_MODULE(_zrdds_basic, m) {
         return true;
     }, "Initialize Basic DDS module");
     
-    // Factory functions for GuardCondition
-    m.def("create_guard_condition", []() -> int {
-        DDS::GuardCondition* condition = new DDS::GuardCondition();
-        if (condition) {
-            int id = BasicDDSManager::generate_id();
-            BasicDDSManager::guard_conditions[id] = condition;
-            return id;
+    // Create GuardCondition - direct creation
+    m.def("create_guard_condition", []() -> bool {
+        if (BasicDDSManager::guard_condition) {
+            return true; // Already exists
         }
-        return -1;
-    }, "Create GuardCondition and return ID");
+        
+        BasicDDSManager::guard_condition = new DDS::GuardCondition();
+        return (BasicDDSManager::guard_condition != nullptr);
+    }, "Create GuardCondition");
     
-    m.def("delete_guard_condition", [](int condition_id) -> bool {
-        auto it = BasicDDSManager::guard_conditions.find(condition_id);
-        if (it != BasicDDSManager::guard_conditions.end()) {
-            if (it->second) {
-                delete it->second;
-            }
-            BasicDDSManager::guard_conditions.erase(it);
+    m.def("delete_guard_condition", []() -> bool {
+        if (BasicDDSManager::guard_condition) {
+            delete BasicDDSManager::guard_condition;
+            BasicDDSManager::guard_condition = nullptr;
             return true;
         }
         return false;
-    }, py::arg("condition_id"), "Delete GuardCondition by ID");
+    }, "Delete GuardCondition");
     
-    m.def("set_guard_condition_trigger", [](int condition_id, bool value) -> bool {
-        auto it = BasicDDSManager::guard_conditions.find(condition_id);
-        if (it != BasicDDSManager::guard_conditions.end() && it->second) {
-            DDS::ReturnCode_t ret = it->second->set_trigger_value(value);
+    m.def("set_guard_condition_trigger", [](bool value) -> bool {
+        if (BasicDDSManager::guard_condition) {
+            DDS::ReturnCode_t ret = BasicDDSManager::guard_condition->set_trigger_value(value);
             return (ret == DDS_RETCODE_OK);
         }
         return false;
-    }, py::arg("condition_id"), py::arg("value"), "Set GuardCondition trigger value");
+    }, py::arg("value"), "Set GuardCondition trigger value");
     
-    m.def("get_guard_condition_trigger", [](int condition_id) -> py::object {
-        auto it = BasicDDSManager::guard_conditions.find(condition_id);
-        if (it != BasicDDSManager::guard_conditions.end() && it->second) {
-            return py::bool_(it->second->get_trigger_value());
+    m.def("get_guard_condition_trigger", []() -> py::object {
+        if (BasicDDSManager::guard_condition) {
+            return py::bool_(BasicDDSManager::guard_condition->get_trigger_value());
         }
         return py::none();
-    }, py::arg("condition_id"), "Get GuardCondition trigger value");
+    }, "Get GuardCondition trigger value");
     
-    // Factory functions for WaitSet
-    m.def("create_waitset", []() -> int {
-        DDS::WaitSet* waitset = new DDS::WaitSet();
-        if (waitset) {
-            int id = BasicDDSManager::generate_id();
-            BasicDDSManager::wait_sets[id] = waitset;
-            return id;
+    // Create WaitSet - direct creation
+    m.def("create_waitset", []() -> bool {
+        if (BasicDDSManager::waitset) {
+            return true; // Already exists
         }
-        return -1;
-    }, "Create WaitSet and return ID");
+        
+        BasicDDSManager::waitset = new DDS::WaitSet();
+        return (BasicDDSManager::waitset != nullptr);
+    }, "Create WaitSet");
     
-    m.def("delete_waitset", [](int waitset_id) -> bool {
-        auto it = BasicDDSManager::wait_sets.find(waitset_id);
-        if (it != BasicDDSManager::wait_sets.end()) {
-            if (it->second) {
-                delete it->second;
-            }
-            BasicDDSManager::wait_sets.erase(it);
+    m.def("delete_waitset", []() -> bool {
+        if (BasicDDSManager::waitset) {
+            delete BasicDDSManager::waitset;
+            BasicDDSManager::waitset = nullptr;
             return true;
         }
         return false;
-    }, py::arg("waitset_id"), "Delete WaitSet by ID");
+    }, "Delete WaitSet");
     
-    m.def("attach_condition", [](int waitset_id, int condition_id) -> bool {
-        auto waitset_it = BasicDDSManager::wait_sets.find(waitset_id);
-        auto condition_it = BasicDDSManager::guard_conditions.find(condition_id);
-        
-        if (waitset_it != BasicDDSManager::wait_sets.end() && 
-            condition_it != BasicDDSManager::guard_conditions.end() &&
-            waitset_it->second && condition_it->second) {
-            
-            DDS::ReturnCode_t ret = waitset_it->second->attach_condition(condition_it->second);
+    m.def("attach_condition", []() -> bool {
+        if (BasicDDSManager::waitset && BasicDDSManager::guard_condition) {
+            DDS::ReturnCode_t ret = BasicDDSManager::waitset->attach_condition(BasicDDSManager::guard_condition);
             return (ret == DDS_RETCODE_OK);
         }
         return false;
-    }, py::arg("waitset_id"), py::arg("condition_id"), "Attach condition to WaitSet");
+    }, "Attach guard condition to WaitSet");
     
-    m.def("detach_condition", [](int waitset_id, int condition_id) -> bool {
-        auto waitset_it = BasicDDSManager::wait_sets.find(waitset_id);
-        auto condition_it = BasicDDSManager::guard_conditions.find(condition_id);
-        
-        if (waitset_it != BasicDDSManager::wait_sets.end() && 
-            condition_it != BasicDDSManager::guard_conditions.end() &&
-            waitset_it->second && condition_it->second) {
-            
-            DDS::ReturnCode_t ret = waitset_it->second->detach_condition(condition_it->second);
+    m.def("detach_condition", []() -> bool {
+        if (BasicDDSManager::waitset && BasicDDSManager::guard_condition) {
+            DDS::ReturnCode_t ret = BasicDDSManager::waitset->detach_condition(BasicDDSManager::guard_condition);
             return (ret == DDS_RETCODE_OK);
         }
         return false;
-    }, py::arg("waitset_id"), py::arg("condition_id"), "Detach condition from WaitSet");
+    }, "Detach guard condition from WaitSet");
     
-    m.def("wait_for_conditions", [](int waitset_id, int timeout_seconds, int timeout_nanoseconds) -> py::object {
-        auto waitset_it = BasicDDSManager::wait_sets.find(waitset_id);
-        if (waitset_it == BasicDDSManager::wait_sets.end() || !waitset_it->second) {
+    m.def("wait_for_conditions", [](int timeout_seconds, int timeout_nanoseconds) -> py::object {
+        if (!BasicDDSManager::waitset) {
             return py::none();
         }
         
@@ -190,7 +150,7 @@ PYBIND11_MODULE(_zrdds_basic, m) {
         DDS::ConditionSeq active_conditions;
         
         // Wait
-        DDS::ReturnCode_t ret = waitset_it->second->wait(active_conditions, timeout);
+        DDS::ReturnCode_t ret = BasicDDSManager::waitset->wait(active_conditions, timeout);
         
         if (ret == DDS::RETCODE_TIMEOUT) {
             return py::bool_(false);
@@ -204,57 +164,48 @@ PYBIND11_MODULE(_zrdds_basic, m) {
         for (DDS::Long i = 0; i < length; ++i) {
             DDS::ConditionPtr* ptr = ConditionSeq_get_reference(&active_conditions, i);
             if (ptr && *ptr) {
-                // Find the condition ID
-                for (const auto& pair : BasicDDSManager::guard_conditions) {
-                    if (pair.second == *ptr) {
-                        result.append(py::int_(pair.first));
-                        break;
-                    }
+                // Check if it's our guard condition
+                if (*ptr == BasicDDSManager::guard_condition) {
+                    result.append(py::int_(1)); // Guard condition ID
                 }
             }
         }
         
         return result;
-    }, py::arg("waitset_id"), py::arg("timeout_seconds") = 1, py::arg("timeout_nanoseconds") = 0, "Wait for conditions");
+    }, py::arg("timeout_seconds") = 1, py::arg("timeout_nanoseconds") = 0, "Wait for conditions");
     
-    // Factory functions for ConditionSeq
-    m.def("create_condition_seq", []() -> int {
-        DDS::ConditionSeq* seq = new DDS::ConditionSeq();
-        if (seq) {
-            int id = BasicDDSManager::generate_id();
-            BasicDDSManager::condition_seqs[id] = seq;
-            return id;
+    // Create ConditionSeq - direct creation
+    m.def("create_condition_seq", []() -> bool {
+        if (BasicDDSManager::condition_seq) {
+            return true; // Already exists
         }
-        return -1;
-    }, "Create ConditionSeq and return ID");
+        
+        BasicDDSManager::condition_seq = new DDS::ConditionSeq();
+        return (BasicDDSManager::condition_seq != nullptr);
+    }, "Create ConditionSeq");
     
-    m.def("delete_condition_seq", [](int seq_id) -> bool {
-        auto it = BasicDDSManager::condition_seqs.find(seq_id);
-        if (it != BasicDDSManager::condition_seqs.end()) {
-            if (it->second) {
-                delete it->second;
-            }
-            BasicDDSManager::condition_seqs.erase(it);
+    m.def("delete_condition_seq", []() -> bool {
+        if (BasicDDSManager::condition_seq) {
+            delete BasicDDSManager::condition_seq;
+            BasicDDSManager::condition_seq = nullptr;
             return true;
         }
         return false;
-    }, py::arg("seq_id"), "Delete ConditionSeq by ID");
+    }, "Delete ConditionSeq");
     
-    m.def("condition_seq_get_length", [](int seq_id) -> py::object {
-        auto it = BasicDDSManager::condition_seqs.find(seq_id);
-        if (it != BasicDDSManager::condition_seqs.end() && it->second) {
-            return py::int_(ConditionSeq_get_length(it->second));
+    m.def("condition_seq_get_length", []() -> py::object {
+        if (BasicDDSManager::condition_seq) {
+            return py::int_(ConditionSeq_get_length(BasicDDSManager::condition_seq));
         }
         return py::none();
-    }, py::arg("seq_id"), "Get ConditionSeq length");
+    }, "Get ConditionSeq length");
     
-    m.def("condition_seq_set_length", [](int seq_id, DDS_Long length) -> bool {
-        auto it = BasicDDSManager::condition_seqs.find(seq_id);
-        if (it != BasicDDSManager::condition_seqs.end() && it->second) {
-            return ConditionSeq_set_length(it->second, length);
+    m.def("condition_seq_set_length", [](DDS_Long length) -> bool {
+        if (BasicDDSManager::condition_seq) {
+            return ConditionSeq_set_length(BasicDDSManager::condition_seq, length);
         }
         return false;
-    }, py::arg("seq_id"), py::arg("length"), "Set ConditionSeq length");
+    }, py::arg("length"), "Set ConditionSeq length");
     
     // Duration utility functions
     m.def("create_duration", [](DDS_Long seconds, DDS_ULong nanoseconds) -> py::dict {
@@ -298,32 +249,18 @@ PYBIND11_MODULE(_zrdds_basic, m) {
     m.attr("STATUS_MASK_NONE") = DDS_STATUS_MASK_NONE;
     m.attr("STATUS_MASK_ALL") = DDS_STATUS_MASK_ALL;
     
-    // ReturnCode constants (commented out to avoid initialization issues)
-    // m.attr("RETCODE_OK") = DDS_RETCODE_OK;
-    // m.attr("RETCODE_ERROR") = DDS_RETCODE_ERROR;
-    // m.attr("RETCODE_UNSUPPORTED") = DDS_RETCODE_UNSUPPORTED;
-    // m.attr("RETCODE_BAD_PARAMETER") = DDS_RETCODE_BAD_PARAMETER;
-    // m.attr("RETCODE_PRECONDITION_NOT_MET") = DDS_RETCODE_PRECONDITION_NOT_MET;
-    // m.attr("RETCODE_OUT_OF_RESOURCES") = DDS_RETCODE_OUT_OF_RESOURCES;
-    // m.attr("RETCODE_NOT_ENABLED") = DDS_RETCODE_NOT_ENABLED;
-    // m.attr("RETCODE_IMMUTABLE_POLICY") = DDS_RETCODE_IMMUTABLE_POLICY;
-    // m.attr("RETCODE_ALREADY_DELETED") = DDS_RETCODE_ALREADY_DELETED;
-    // m.attr("RETCODE_TIMEOUT") = DDS_RETCODE_TIMEOUT;
-    // m.attr("RETCODE_NO_DATA") = DDS_RETCODE_NO_DATA;
-    // m.attr("RETCODE_ILLEGAL_OPERATION") = DDS_RETCODE_ILLEGAL_OPERATION;
+    // Check if entities exist
+    m.def("guard_condition_exists", []() -> bool {
+        return (BasicDDSManager::guard_condition != nullptr);
+    }, "Check if guard condition exists");
     
-    // Utility functions
-    m.def("get_guard_condition_count", []() {
-        return static_cast<int>(BasicDDSManager::guard_conditions.size());
-    }, "Get number of guard conditions");
+    m.def("waitset_exists", []() -> bool {
+        return (BasicDDSManager::waitset != nullptr);
+    }, "Check if waitset exists");
     
-    m.def("get_waitset_count", []() {
-        return static_cast<int>(BasicDDSManager::wait_sets.size());
-    }, "Get number of wait sets");
-    
-    m.def("get_condition_seq_count", []() {
-        return static_cast<int>(BasicDDSManager::condition_seqs.size());
-    }, "Get number of condition sequences");
+    m.def("condition_seq_exists", []() -> bool {
+        return (BasicDDSManager::condition_seq != nullptr);
+    }, "Check if condition sequence exists");
     
     // Cleanup function
     m.def("finalize", []() {
@@ -334,10 +271,10 @@ PYBIND11_MODULE(_zrdds_basic, m) {
     // API info
     m.def("get_api_info", []() {
         py::dict info;
-        info["message"] = "ZRDDS Basic Module with Factory Pattern - C++ Interface";
-        info["guard_condition_count"] = BasicDDSManager::guard_conditions.size();
-        info["waitset_count"] = BasicDDSManager::wait_sets.size();
-        info["condition_seq_count"] = BasicDDSManager::condition_seqs.size();
+        info["message"] = "ZRDDS Basic Module - Simple Direct Interface";
+        info["guard_condition_exists"] = (BasicDDSManager::guard_condition != nullptr);
+        info["waitset_exists"] = (BasicDDSManager::waitset != nullptr);
+        info["condition_seq_exists"] = (BasicDDSManager::condition_seq != nullptr);
         
         py::list functions;
         functions.append(py::str("init"));

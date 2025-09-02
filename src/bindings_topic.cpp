@@ -19,466 +19,269 @@
 
 namespace py = pybind11;
 
-// Global storage for Topic-related DDS entities
-struct TopicManager {
-    static std::map<int, DDS::DomainParticipant*> participants;
-    static std::map<std::string, DDS::Topic*> topics;
-    static std::map<std::string, DDS::ContentFilteredTopic*> content_filtered_topics;
-    static std::map<std::string, DDS::MultiTopic*> multi_topics;
-    static std::map<std::string, DDS::TypeSupport*> type_supports;
-    
-    static int next_id;
-    
-    static int generate_id() { return ++next_id; }
+// Simple Topic DDS Manager - only manages topics
+struct TopicDDSManager {
+    static DDS::Topic* topic;
+    static DDS::ContentFilteredTopic* content_filtered_topic;
+    static DDS::MultiTopic* multi_topic;
+    static DDS::TypeSupport* type_support;
     
     static void cleanup() {
-        DDS::DomainParticipantFactory *factory = DDS::DomainParticipantFactory::get_instance();
-        
-        // Clean up topics
-        for (auto& pair : topics) {
-            if (pair.second) {
-                // Topic deletion is handled by DomainParticipant
-            }
+        if (content_filtered_topic) {
+            // Note: ContentFilteredTopic deletion is handled by DomainParticipant
+            content_filtered_topic = nullptr;
         }
-        
-        // Clean up content filtered topics
-        for (auto& pair : content_filtered_topics) {
-            if (pair.second) {
-                // ContentFilteredTopic deletion is handled by DomainParticipant
-            }
+        if (multi_topic) {
+            // Note: MultiTopic deletion is handled by DomainParticipant
+            multi_topic = nullptr;
         }
-        
-        // Clean up multi topics
-        for (auto& pair : multi_topics) {
-            if (pair.second) {
-                // MultiTopic deletion is handled by DomainParticipant
-            }
+        if (topic) {
+            // Note: Topic deletion is handled by DomainParticipant
+            topic = nullptr;
         }
-        
-        // Clean up type supports
-        for (auto& pair : type_supports) {
-            if (pair.second) {
                 // TypeSupport is typically static, no need to delete
-            }
-        }
-        
-        // Delete participants and their contained entities
-        for (auto& pair : participants) {
-            if (pair.second) {
-                pair.second->delete_contained_entities();
-                if (factory) {
-                    factory->delete_participant(pair.second);
-                }
-            }
-        }
-        
-        // Clear all maps
-        participants.clear();
-        topics.clear();
-        content_filtered_topics.clear();
-        multi_topics.clear();
-        type_supports.clear();
+        type_support = nullptr;
     }
 };
 
-std::map<int, DDS::DomainParticipant*> TopicManager::participants;
-std::map<std::string, DDS::Topic*> TopicManager::topics;
-std::map<std::string, DDS::ContentFilteredTopic*> TopicManager::content_filtered_topics;
-std::map<std::string, DDS::MultiTopic*> TopicManager::multi_topics;
-std::map<std::string, DDS::TypeSupport*> TopicManager::type_supports;
-int TopicManager::next_id = 1000;
+// Initialize static members
+DDS::Topic* TopicDDSManager::topic = nullptr;
+DDS::ContentFilteredTopic* TopicDDSManager::content_filtered_topic = nullptr;
+DDS::MultiTopic* TopicDDSManager::multi_topic = nullptr;
+DDS::TypeSupport* TopicDDSManager::type_support = nullptr;
 
-// Get participant factory function
-py::capsule get_participant_factory()
-{
-    DDS::DomainParticipantFactory *factory = DDS::DomainParticipantFactory::get_instance();
-    if (!factory)
-    {
-        throw std::runtime_error("Failed to get DomainParticipantFactory instance");
-    }
-    return py::capsule(factory, [](void *p) {});
-}
-
-// Refactored Topic module wrapper - Focused on Topic functionality only
+// Topic module wrapper
 PYBIND11_MODULE(_zrdds_topic, m) {
-    m.doc() = "ZRDDS Python Wrapper - Topic Module (Focused on Topic functionality)";
+    m.doc() = "ZRDDS Python Wrapper - Topic Module (Simple Direct Interface)";
     
     // Basic functions
     m.def("hello", []() {
-        return "Hello from ZRDDS Topic Module - Focused on Topic functionality!";
+        return "Hello from ZRDDS Topic Module - Simple Direct Interface!";
     });
     
     m.def("get_version", []() {
-        return "ZRDDS Topic Module v2.1.0 - Topic-focused implementation";
+        return "ZRDDS Topic Module v3.0.0 - Simple Direct Implementation";
     });
-    
-    // Get participant factory
-    m.def("get_participant_factory", &get_participant_factory, "Get DomainParticipantFactory instance");
     
     // Initialize Topic module
     m.def("init", []() {
-        DDS::DomainParticipantFactory *factory = DDS::DomainParticipantFactory::get_instance();
-        if (factory) {
-            TopicManager::cleanup();
+        TopicDDSManager::cleanup();
             return true;
-        } else {
-            return false;
-        }
     }, "Initialize ZRDDS Topic system");
     
-    // Create domain participant
-    m.def("create_domain_participant", [](int domain_id, const std::string& qos_name = "") {
-        DDS::DomainParticipantFactory *factory = DDS::DomainParticipantFactory::get_instance();
-        if (!factory) {
-            return -1;
-        }
-        
-        // Check if participant already exists for this domain
-        if (TopicManager::participants.find(domain_id) != TopicManager::participants.end()) {
-            return domain_id; // Already exists
-        }
-        
-        // Create participant with default QoS
-        DDS::DomainParticipant* participant = factory->create_participant(
-            domain_id, 
-            DDS::DOMAINPARTICIPANT_QOS_DEFAULT, 
-            nullptr, 
-            DDS::STATUS_MASK_NONE
-        );
-        
-        if (participant) {
-            TopicManager::participants[domain_id] = participant;
-            return domain_id;
-        } else {
-            return -1;
-        }
-    }, py::arg("domain_id"), py::arg("qos_name") = "", "Create domain participant");
+    // Note: Topic module does not create domain participants
+    // Domain participants should be created by domain module
     
-    // Create Topic (pure Topic creation, no DataWriter)
-    m.def("create_topic", [](int domain_id, const std::string& topic_name, 
-                             const std::string& type_name = "Bytes") -> int {
-        auto participant_it = TopicManager::participants.find(domain_id);
-        if (participant_it == TopicManager::participants.end()) {
-            return -1; // Participant not found
+    // Create Topic - requires participant from domain module
+    m.def("create_topic", [](py::object participant_obj, const std::string& topic_name, const std::string& type_name = "Bytes") -> bool {
+        if (TopicDDSManager::topic) {
+            return true; // Already exists
         }
         
-        DDS::DomainParticipant* participant = participant_it->second;
-        
-        // Check if topic already exists
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it != TopicManager::topics.end()) {
-            return 0; // Topic already exists
+        // Get participant from domain module
+        DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+        if (!participant) {
+            return false; // Invalid participant
         }
         
-        // Register type support first
-        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
+        // Register type support
+        if (type_name == "Bytes") {
+            TopicDDSManager::type_support = DDS::BytesTypeSupport::get_instance();
+            DDS::ReturnCode_t ret = TopicDDSManager::type_support->register_type(
             participant,
-            type_name.c_str()
-        );
-        
-        if (register_result != DDS::RETCODE_OK) {
-            return -1; // Failed to register type
+                "Bytes"
+            );
+            if (ret != DDS::RETCODE_OK) {
+                return false;
+            }
         }
         
-                 // Create topic with properly initialized QoS
-         DDS::TopicQos topic_qos;
-         DDS_DefaultTopicQosInitial(&topic_qos);
-         
-         DDS::Topic* topic = participant->create_topic(
+        // Create topic with default QoS
+        TopicDDSManager::topic = participant->create_topic(
              topic_name.c_str(), 
              type_name.c_str(),
-             topic_qos, 
+            DDS::TOPIC_QOS_DEFAULT,
              nullptr, 
              DDS::STATUS_MASK_NONE
          );
         
-        if (topic) {
-            TopicManager::topics[topic_name] = topic;
-            return 1; // Topic created successfully
-        } else {
-            return -1; // Failed to create topic
-        }
-    }, py::arg("domain_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
-       "Create Topic (returns 1=created, 0=exists, -1=error)");
+        return (TopicDDSManager::topic != nullptr);
+    }, py::arg("participant"), py::arg("topic_name"), py::arg("type_name") = "Bytes", "Create Topic");
     
-    // ID-based Topic creation - no pointer passing needed
-    m.def("create_topic_with_participant_id", [](int participant_id, const std::string& topic_name, 
-                                                 const std::string& type_name = "Bytes") -> int {
-        // We need to get the participant pointer from domain module
-        // For now, we'll use a simplified approach - get the participant pointer
-        // This is a temporary solution until we implement proper cross-module communication
-        
-        // Import domain module to get participant pointer
-        // This is a workaround - in a real implementation, we'd have better module communication
-        DDS::DomainParticipant* participant = nullptr;
-        
-        // Try to find participant in our local map first
-        for (auto& pair : TopicManager::participants) {
-            // Check if this participant matches the ID (this is a simplified approach)
-            participant = pair.second;
-            break; // Use the first available participant for now
+    m.def("delete_topic", [](py::object participant_obj) -> bool {
+        if (TopicDDSManager::topic) {
+            // Get participant from domain module
+            DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+            if (participant) {
+                DDS::ReturnCode_t ret = participant->delete_topic(TopicDDSManager::topic);
+                if (ret == DDS::RETCODE_OK) {
+                    TopicDDSManager::topic = nullptr;
+                    return true;
+                }
+            }
         }
-        
-        if (!participant) {
-            return -1; // Participant not found
-        }
-        
-        // Check if topic already exists
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it != TopicManager::topics.end()) {
-            return 0; // Topic already exists
-        }
-        
-        // Register type support first
-        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
-            participant,
-            type_name.c_str()
-        );
-        
-        if (register_result != DDS::RETCODE_OK) {
-            return -1; // Failed to register type
-        }
-        
-        // Create topic with properly initialized QoS
-        DDS::TopicQos topic_qos;
-        DDS_DefaultTopicQosInitial(&topic_qos);
-        
-        DDS::Topic* topic = participant->create_topic(
-            topic_name.c_str(), 
-            type_name.c_str(),
-            topic_qos, 
-            nullptr, 
-            DDS::STATUS_MASK_NONE
-        );
-        
-        if (topic) {
-            TopicManager::topics[topic_name] = topic;
-            return 1; // Topic created successfully
-        } else {
-            return -1; // Failed to create topic
-        }
-    }, py::arg("participant_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
-       "Create Topic using participant ID (no pointer passing)");
+        return false;
+    }, py::arg("participant"), "Delete Topic");
     
-    // Pure ID-based Topic creation - completely no pointer passing
-    m.def("create_topic_pure_id", [](int participant_id, const std::string& topic_name, 
-                                     const std::string& type_name = "Bytes") -> int {
-        // Get participant from domain module using cross-module communication
-        // This is a simplified approach - in a real implementation, we'd have proper module communication
-        
-        // For now, we'll use the existing participant registration mechanism
-        // but return a topic ID instead of requiring pointer passing
-        
-        // Check if topic already exists
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it != TopicManager::topics.end()) {
-            return 0; // Topic already exists
+    // Create ContentFilteredTopic - requires participant from domain module
+    m.def("create_content_filtered_topic", [](py::object participant_obj, const std::string& name, const std::string& related_topic_name, 
+                                              const std::string& filter_expression, const std::vector<std::string>& expression_parameters) -> bool {
+        if (TopicDDSManager::content_filtered_topic) {
+            return true; // Already exists
         }
         
-        // Find participant in our local map (this should be registered by domain module)
-        DDS::DomainParticipant* participant = nullptr;
-        for (auto& pair : TopicManager::participants) {
-            participant = pair.second;
-            break; // Use the first available participant for now
+        // Get participant from domain module
+        DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+        if (!participant || !TopicDDSManager::topic) {
+            return false; // Need participant and topic first
         }
         
-        if (!participant) {
-            return -1; // Participant not found
+        // Create string sequence for expression parameters
+        DDS::StringSeq params;
+        DDS_StringSeq_set_length(&params, expression_parameters.size());
+        for (size_t i = 0; i < expression_parameters.size(); ++i) {
+            DDS::String* ref = DDS_StringSeq_get_reference(&params, i);
+            if (ref) {
+                *ref = const_cast<char*>(expression_parameters[i].c_str());
+            }
         }
-        
-        // Register type support first
-        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
-            participant,
-            type_name.c_str()
-        );
-        
-        if (register_result != DDS::RETCODE_OK) {
-            return -1; // Failed to register type
-        }
-        
-        // Create topic with properly initialized QoS
-        DDS::TopicQos topic_qos;
-        DDS_DefaultTopicQosInitial(&topic_qos);
-        
-        DDS::Topic* topic = participant->create_topic(
-            topic_name.c_str(), 
-            type_name.c_str(),
-            topic_qos, 
-            nullptr, 
-            DDS::STATUS_MASK_NONE
-        );
-        
-        if (topic) {
-            TopicManager::topics[topic_name] = topic;
-            // Return a topic ID (we'll use a simple hash of the topic name for now)
-            int topic_id = std::hash<std::string>{}(topic_name) % 10000;
-            return topic_id; // Return topic ID instead of success flag
-        } else {
-            return -1; // Failed to create topic
-        }
-    }, py::arg("participant_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
-       "Create Topic using participant ID (pure ID-based, no pointer passing)");
-    
-    // Create ContentFilteredTopic
-    m.def("create_content_filtered_topic", [](int domain_id, const std::string& topic_name,
-                                             const std::string& filtered_topic_name,
-                                             const std::string& filter_expression,
-                                             const std::vector<std::string>& filter_parameters = {}) -> int {
-        auto participant_it = TopicManager::participants.find(domain_id);
-        if (participant_it == TopicManager::participants.end()) {
-            return -1; // Participant not found
-        }
-        
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it == TopicManager::topics.end()) {
-            return -1; // Source topic not found
-        }
-        
-        DDS::DomainParticipant* participant = participant_it->second;
-        DDS::Topic* source_topic = topic_it->second;
         
         // Create content filtered topic
-        DDS::ContentFilteredTopic* filtered_topic = participant->create_contentfilteredtopic(
-            filtered_topic_name.c_str(),
-            source_topic,
+        TopicDDSManager::content_filtered_topic = participant->create_contentfilteredtopic(
+            name.c_str(),
+            TopicDDSManager::topic,
             filter_expression.c_str(),
-            DDS::StringSeq() // Convert vector to StringSeq if needed
+            params
         );
         
-        if (filtered_topic) {
-            TopicManager::content_filtered_topics[filtered_topic_name] = filtered_topic;
-            return 1; // Created successfully
-        } else {
-            return -1; // Failed to create
-        }
-    }, py::arg("domain_id"), py::arg("topic_name"), py::arg("filtered_topic_name"), 
-       py::arg("filter_expression"), py::arg("filter_parameters") = std::vector<std::string>(),
-       "Create ContentFilteredTopic");
+        return (TopicDDSManager::content_filtered_topic != nullptr);
+    }, py::arg("participant"), py::arg("name"), py::arg("related_topic_name"), py::arg("filter_expression"), py::arg("expression_parameters"), "Create ContentFilteredTopic");
     
-    // Create MultiTopic
-    m.def("create_multi_topic", [](int domain_id, const std::string& multi_topic_name,
-                                   const std::string& type_name,
-                                   const std::string& subscription_expression,
-                                   const std::vector<std::string>& expression_parameters = {}) -> int {
-        auto participant_it = TopicManager::participants.find(domain_id);
-        if (participant_it == TopicManager::participants.end()) {
-            return -1; // Participant not found
+    m.def("delete_content_filtered_topic", [](py::object participant_obj) -> bool {
+        if (TopicDDSManager::content_filtered_topic) {
+            DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+            if (participant) {
+                DDS::ReturnCode_t ret = participant->delete_contentfilteredtopic(TopicDDSManager::content_filtered_topic);
+                if (ret == DDS::RETCODE_OK) {
+                    TopicDDSManager::content_filtered_topic = nullptr;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }, py::arg("participant"), "Delete ContentFilteredTopic");
+    
+    // Create MultiTopic - direct creation
+    m.def("create_multi_topic", [](py::object participant_obj, const std::string& name, const std::string& type_name, 
+                                   const std::string& subscription_expression) -> bool {
+        if (TopicDDSManager::multi_topic) {
+            return true; // Already exists
         }
         
-        DDS::DomainParticipant* participant = participant_it->second;
+        // Get participant from domain module
+        DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+        if (!participant) {
+            return false; // Invalid participant
+        }
         
         // Create multi topic
-        DDS::MultiTopic* multi_topic = participant->create_multitopic(
-            multi_topic_name.c_str(),
+        TopicDDSManager::multi_topic = participant->create_multitopic(
+            name.c_str(),
             type_name.c_str(),
             subscription_expression.c_str(),
-            nullptr  // expression_parameters - using nullptr for now
+            nullptr
         );
         
-        if (multi_topic) {
-            TopicManager::multi_topics[multi_topic_name] = multi_topic;
-            return 1; // Created successfully
-        } else {
-            return -1; // Failed to create
-        }
-    }, py::arg("domain_id"), py::arg("multi_topic_name"), py::arg("type_name"),
-       py::arg("subscription_expression"), py::arg("expression_parameters") = std::vector<std::string>(),
-       "Create MultiTopic");
+        return (TopicDDSManager::multi_topic != nullptr);
+    }, py::arg("participant"), py::arg("name"), py::arg("type_name"), py::arg("subscription_expression"), "Create MultiTopic");
     
-    // Get Topic information
-    m.def("get_topic_info", [](const std::string& topic_name) -> py::object {
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it == TopicManager::topics.end()) {
+    m.def("delete_multi_topic", [](py::object participant_obj) -> bool {
+        if (TopicDDSManager::multi_topic) {
+            DDS::DomainParticipant* participant = participant_obj.cast<DDS::DomainParticipant*>();
+            if (participant) {
+                DDS::ReturnCode_t ret = participant->delete_multitopic(TopicDDSManager::multi_topic);
+                if (ret == DDS::RETCODE_OK) {
+                    TopicDDSManager::multi_topic = nullptr;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }, py::arg("participant"), "Delete MultiTopic");
+    
+    // Topic operations
+    m.def("get_topic_name", []() -> py::object {
+        if (TopicDDSManager::topic) {
+            return py::str(TopicDDSManager::topic->get_name());
+        }
             return py::none();
+    }, "Get Topic name");
+    
+    m.def("get_topic_type_name", []() -> py::object {
+        if (TopicDDSManager::topic) {
+            return py::str(TopicDDSManager::topic->get_type_name());
         }
-        
-        DDS::Topic* topic = topic_it->second;
-        py::dict info;
-        info["name"] = topic_name;
-        info["type_name"] = topic->get_type_name();
-        info["participant"] = topic->get_participant() ? "valid" : "invalid";
-        return info;
-    }, py::arg("topic_name"), "Get Topic information");
+        return py::none();
+    }, "Get Topic type name");
     
-    // Register participant for integration (ID-based only)
-    m.def("register_participant_by_id", [](int domain_id, int participant_id) -> bool {
-        // Topic模块不应该自己创建域参与者，应该从域模块获取
-        // 这里只是记录映射关系，实际的域参与者由域模块管理
-        TopicManager::participants[domain_id] = nullptr; // 占位符，实际指针由域模块提供
-        return true;
-    }, py::arg("domain_id"), py::arg("participant_id"), "Register DomainParticipant by ID for integration");
-    
-    // Check if participant exists (ID-based only, no pointer passing)
-    m.def("participant_exists", [](int domain_id) -> bool {
-        auto participant_it = TopicManager::participants.find(domain_id);
-        return (participant_it != TopicManager::participants.end());
-    }, py::arg("domain_id"), "Check if participant exists by domain ID");
-    
-    // Check if topic exists (ID-based only, no pointer passing)
-    m.def("topic_exists", [](const std::string& topic_name) -> bool {
-        auto topic_it = TopicManager::topics.find(topic_name);
-        return (topic_it != TopicManager::topics.end());
-    }, py::arg("topic_name"), "Check if topic exists by name");
-    
-    // Delete Topic
-    m.def("delete_topic", [](const std::string& topic_name) -> bool {
-        auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it == TopicManager::topics.end()) {
-            return false; // Topic not found
+    m.def("get_content_filtered_topic_name", []() -> py::object {
+        if (TopicDDSManager::content_filtered_topic) {
+            return py::str(TopicDDSManager::content_filtered_topic->get_name());
         }
-        
-        // Topic deletion is handled by DomainParticipant
-        TopicManager::topics.erase(topic_it);
-        return true;
-    }, py::arg("topic_name"), "Delete Topic (remove from management)");
+        return py::none();
+    }, "Get ContentFilteredTopic name");
     
-    // Cleanup
+    m.def("get_multi_topic_name", []() -> py::object {
+        if (TopicDDSManager::multi_topic) {
+            return py::str(TopicDDSManager::multi_topic->get_name());
+        }
+        return py::none();
+    }, "Get MultiTopic name");
+    
+    // Check if entities exist
+    m.def("topic_exists", []() -> bool {
+        return (TopicDDSManager::topic != nullptr);
+    }, "Check if topic exists");
+    
+    m.def("content_filtered_topic_exists", []() -> bool {
+        return (TopicDDSManager::content_filtered_topic != nullptr);
+    }, "Check if content filtered topic exists");
+    
+    m.def("multi_topic_exists", []() -> bool {
+        return (TopicDDSManager::multi_topic != nullptr);
+    }, "Check if multi topic exists");
+    
+    m.def("type_support_exists", []() -> bool {
+        return (TopicDDSManager::type_support != nullptr);
+    }, "Check if type support exists");
+    
+    // Cleanup function
     m.def("finalize", []() {
-        TopicManager::cleanup();
-        
-        DDS::DomainParticipantFactory *factory = DDS::DomainParticipantFactory::get_instance();
-        if (factory) {
-            DDS::ReturnCode_t result = factory->finalize_instance();
+        TopicDDSManager::cleanup();
             return true;
-        }
-        return true;
-    }, "Cleanup ZRDDS Topic system");
-    
-    // Utility functions
-    m.def("get_participant_count", []() {
-        return static_cast<int>(TopicManager::participants.size());
-    }, "Get number of domain participants");
-    
-    m.def("get_topic_count", []() {
-        return static_cast<int>(TopicManager::topics.size());
-    }, "Get number of topics");
-    
-    m.def("get_content_filtered_topic_count", []() {
-        return static_cast<int>(TopicManager::content_filtered_topics.size());
-    }, "Get number of content filtered topics");
-    
-    m.def("get_multi_topic_count", []() {
-        return static_cast<int>(TopicManager::multi_topics.size());
-    }, "Get number of multi topics");
+    }, "Cleanup Topic DDS module");
     
     // API info
     m.def("get_api_info", []() {
         py::dict info;
-        info["message"] = "ZRDDS Topic Module - Focused on Topic functionality";
-        info["participant_count"] = TopicManager::participants.size();
-        info["topic_count"] = TopicManager::topics.size();
-        info["content_filtered_topic_count"] = TopicManager::content_filtered_topics.size();
-        info["multi_topic_count"] = TopicManager::multi_topics.size();
+        info["message"] = "ZRDDS Topic Module - Simple Direct Interface";
+        info["topic_exists"] = (TopicDDSManager::topic != nullptr);
+        info["content_filtered_topic_exists"] = (TopicDDSManager::content_filtered_topic != nullptr);
+        info["multi_topic_exists"] = (TopicDDSManager::multi_topic != nullptr);
+        info["type_support_exists"] = (TopicDDSManager::type_support != nullptr);
         
         py::list functions;
-        functions.append(py::str("get_participant_factory"));
         functions.append(py::str("init"));
-        functions.append(py::str("create_domain_participant"));
         functions.append(py::str("create_topic"));
-        functions.append(py::str("create_content_filtered_topic"));
-        functions.append(py::str("create_multi_topic"));
-        functions.append(py::str("get_topic_info"));
         functions.append(py::str("delete_topic"));
+        functions.append(py::str("create_content_filtered_topic"));
+        functions.append(py::str("delete_content_filtered_topic"));
+        functions.append(py::str("create_multi_topic"));
+        functions.append(py::str("delete_multi_topic"));
+        functions.append(py::str("get_topic_name"));
+        functions.append(py::str("get_topic_type_name"));
+        functions.append(py::str("get_content_filtered_topic_name"));
+        functions.append(py::str("get_multi_topic_name"));
         functions.append(py::str("finalize"));
         info["main_functions"] = functions;
         return info;

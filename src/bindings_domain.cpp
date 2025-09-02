@@ -12,43 +12,29 @@
 #include "ReturnCode_t.h"
 #include "Duration_t.h"
 #include "ZRDDSCppWrapper.h"
+#include "ZRBuiltinTypesTypeSupport.h"  // For BytesTypeSupport
+#include "Topic.h"  // For Topic and TopicSeq
+#include "TopicDescription.h"  // For TopicDescription
 
 namespace py = pybind11;
 
-// Global storage for domain DDS entities
+// Simple Domain DDS Manager - like your simple DDS module
 struct DomainDDSManager {
-    static std::map<int, DDS::DomainParticipant*> participants;
-    static std::map<int, DDS::DomainParticipantQos*> participant_qos;
+    static DDS::DomainParticipant* participant;
+    static DDS::DomainParticipantQos* participant_qos;
     static DDS::DomainParticipantFactory* factory;
-    static std::map<std::string, int> module_registrations;  // Module name -> participant ID mapping
-    
-    static int next_id;
-    
-    static int generate_id() { return ++next_id; }
     
     static void cleanup() {
-        // Clean up participants
-        for (auto& pair : participants) {
-            if (pair.second) {
-                DDS::DomainParticipantFactory* factory = get_factory();
-                if (factory) {
-                    factory->delete_participant(pair.second);
-                }
+        if (participant) {
+            if (factory) {
+                factory->delete_participant(participant);
             }
+            participant = nullptr;
         }
-        
-        // Clean up QoS objects
-        for (auto& pair : participant_qos) {
-            if (pair.second) {
-                delete pair.second;
-            }
+        if (participant_qos) {
+            delete participant_qos;
+            participant_qos = nullptr;
         }
-        
-        // Clear all maps
-        participants.clear();
-        participant_qos.clear();
-        
-        // Finalize factory instance
         if (factory) {
             DDS::DomainParticipantFactory::finalize_instance();
             factory = nullptr;
@@ -63,23 +49,22 @@ struct DomainDDSManager {
     }
 };
 
-std::map<int, DDS::DomainParticipant*> DomainDDSManager::participants;
-std::map<int, DDS::DomainParticipantQos*> DomainDDSManager::participant_qos;
+// Initialize static members
+DDS::DomainParticipant* DomainDDSManager::participant = nullptr;
+DDS::DomainParticipantQos* DomainDDSManager::participant_qos = nullptr;
 DDS::DomainParticipantFactory* DomainDDSManager::factory = nullptr;
-std::map<std::string, int> DomainDDSManager::module_registrations;
-int DomainDDSManager::next_id = 6000;
 
 // Domain module wrapper
 PYBIND11_MODULE(_zrdds_domain, m) {
-    m.doc() = "ZRDDS Python Wrapper - Domain Module (C++ Interface with Factory Pattern)";
+    m.doc() = "ZRDDS Python Wrapper - Domain Module (Simple Direct Interface)";
     
     // Basic functions
     m.def("hello", []() {
-        return "Hello from ZRDDS Domain Module with Factory Pattern!";
+        return "Hello from ZRDDS Domain Module - Simple Direct Interface!";
     });
     
     m.def("get_version", []() {
-        return "ZRDDS Domain Module v2.0.0 - Factory Pattern Implementation";
+        return "ZRDDS Domain Module v3.0.0 - Simple Direct Implementation";
     });
     
     // Initialize domain module
@@ -89,108 +74,100 @@ PYBIND11_MODULE(_zrdds_domain, m) {
         return true;
     }, "Initialize Domain DDS module");
     
-    // Factory functions for DomainParticipantQos
-    m.def("create_participant_qos", []() -> int {
-        DDS::DomainParticipantQos* qos = new DDS::DomainParticipantQos();
-        if (qos) {
-            // Use ZRDDS default QoS initialization function
-            DDS_Long result = DDS_DefaultDomainParticipantQosInitial(qos);
-            if (result != 0) {
-                delete qos;
-                return -1;
-            }
-            
-            int id = DomainDDSManager::generate_id();
-            DomainDDSManager::participant_qos[id] = qos;
-            return id;
+    // Create DomainParticipantQos - direct creation
+    m.def("create_participant_qos", []() -> bool {
+        if (DomainDDSManager::participant_qos) {
+            return true; // Already exists
         }
-        return -1;
-    }, "Create DomainParticipantQos with ZRDDS default values and return ID");
+        
+        DomainDDSManager::participant_qos = new DDS::DomainParticipantQos();
+        if (DomainDDSManager::participant_qos) {
+            // Use ZRDDS default QoS initialization function
+            DDS_Long result = DDS_DefaultDomainParticipantQosInitial(DomainDDSManager::participant_qos);
+            return (result == 0);
+        }
+        return false;
+    }, "Create DomainParticipantQos with ZRDDS default values");
     
-    m.def("delete_participant_qos", [](int qos_id) -> bool {
-        auto it = DomainDDSManager::participant_qos.find(qos_id);
-        if (it != DomainDDSManager::participant_qos.end()) {
-            if (it->second) {
-                delete it->second;
-            }
-            DomainDDSManager::participant_qos.erase(it);
+    m.def("delete_participant_qos", []() -> bool {
+        if (DomainDDSManager::participant_qos) {
+            delete DomainDDSManager::participant_qos;
+            DomainDDSManager::participant_qos = nullptr;
             return true;
         }
         return false;
-    }, py::arg("qos_id"), "Delete DomainParticipantQos by ID");
+    }, "Delete DomainParticipantQos");
     
-    // Factory functions for DomainParticipant
-    m.def("create_domain_participant", [](int domain_id, int qos_id = -1) -> int {
+    // Create DomainParticipant - direct creation
+    m.def("create_domain_participant", [](int domain_id) -> bool {
+        if (DomainDDSManager::participant) {
+            return true; // Already exists
+        }
+        
         DDS::DomainParticipantFactory* factory = DomainDDSManager::get_factory();
         if (!factory) {
-            return -1;
+            return false;
         }
         
-        DDS::DomainParticipantQos* qos = nullptr;
-        if (qos_id != -1) {
-            auto qos_it = DomainDDSManager::participant_qos.find(qos_id);
-            if (qos_it != DomainDDSManager::participant_qos.end()) {
-                qos = qos_it->second;
-            }
+        DDS::DomainParticipantQos* qos = DomainDDSManager::participant_qos;
+        if (!qos) {
+            // Create default QoS if not exists
+            qos = new DDS::DomainParticipantQos();
+            DDS_DefaultDomainParticipantQosInitial(qos);
         }
         
-        DDS::DomainParticipant* participant = factory->create_participant(domain_id, qos ? *qos : DDS::DomainParticipantQos(), nullptr, DDS::STATUS_MASK_ALL);
-        if (participant) {
-            int id = DomainDDSManager::generate_id();
-            DomainDDSManager::participants[id] = participant;
-            return id;
-        }
-        return -1;
-    }, py::arg("domain_id"), py::arg("qos_id") = -1, "Create DomainParticipant and return ID");
+        DomainDDSManager::participant = factory->create_participant(
+            domain_id, 
+            *qos, 
+            nullptr, 
+            DDS::STATUS_MASK_ALL
+        );
+        
+        return (DomainDDSManager::participant != nullptr);
+    }, py::arg("domain_id"), "Create DomainParticipant");
     
-    m.def("delete_domain_participant", [](int participant_id) -> bool {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end()) {
-            if (it->second) {
-                // First delete all contained entities (child entities)
-                DDS::ReturnCode_t delete_ret = it->second->delete_contained_entities();
-                if (delete_ret != DDS::RETCODE_OK) {
-                    // Continue even if some entities couldn't be deleted
-                }
-                
-                // Then delete the participant itself
-                DDS::DomainParticipantFactory* factory = DomainDDSManager::get_factory();
-                if (factory) {
-                    DDS::ReturnCode_t ret = factory->delete_participant(it->second);
-                    if (ret == DDS::RETCODE_OK) {
-                        DomainDDSManager::participants.erase(it);
-                        return true;
-                    }
+    m.def("delete_domain_participant", []() -> bool {
+        if (DomainDDSManager::participant) {
+            // First delete all contained entities (child entities)
+            DDS::ReturnCode_t delete_ret = DomainDDSManager::participant->delete_contained_entities();
+            if (delete_ret != DDS::RETCODE_OK) {
+                // Continue even if some entities couldn't be deleted
+            }
+            
+            // Then delete the participant itself
+            DDS::DomainParticipantFactory* factory = DomainDDSManager::get_factory();
+            if (factory) {
+                DDS::ReturnCode_t ret = factory->delete_participant(DomainDDSManager::participant);
+                if (ret == DDS::RETCODE_OK) {
+                    DomainDDSManager::participant = nullptr;
+                    return true;
                 }
             }
         }
         return false;
-    }, py::arg("participant_id"), "Delete DomainParticipant by ID");
+    }, "Delete DomainParticipant");
     
     // DomainParticipant operations
-    m.def("get_participant_domain_id", [](int participant_id) -> py::object {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
-            return py::int_(it->second->get_domain_id());
+    m.def("get_participant_domain_id", []() -> py::object {
+        if (DomainDDSManager::participant) {
+            return py::int_(DomainDDSManager::participant->get_domain_id());
         }
         return py::none();
-    }, py::arg("participant_id"), "Get DomainParticipant domain ID");
+    }, "Get DomainParticipant domain ID");
     
-    m.def("get_participant_id", [](int participant_id) -> py::object {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
+    m.def("get_participant_id", []() -> py::object {
+        if (DomainDDSManager::participant) {
             // Note: get_participant_id() method doesn't exist in ZRDDS
             // Return a placeholder value
-            return py::int_(participant_id);
+            return py::int_(1);
         }
         return py::none();
-    }, py::arg("participant_id"), "Get DomainParticipant ID");
+    }, "Get DomainParticipant ID");
     
-    m.def("get_participant_qos", [](int participant_id) -> py::object {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
+    m.def("get_participant_qos", []() -> py::object {
+        if (DomainDDSManager::participant) {
             DDS::DomainParticipantQos qos;
-            DDS::ReturnCode_t ret = it->second->get_qos(qos);
+            DDS::ReturnCode_t ret = DomainDDSManager::participant->get_qos(qos);
             if (ret == DDS::RETCODE_OK) {
                 py::dict result;
                 result["user_data"] = "default_user_data";  // Placeholder for user data
@@ -199,49 +176,15 @@ PYBIND11_MODULE(_zrdds_domain, m) {
             }
         }
         return py::none();
-    }, py::arg("participant_id"), "Get DomainParticipant QoS");
+    }, "Get DomainParticipant QoS");
     
-    m.def("set_participant_qos", [](int participant_id, int qos_id) -> bool {
-        auto participant_it = DomainDDSManager::participants.find(participant_id);
-        auto qos_it = DomainDDSManager::participant_qos.find(qos_id);
-        
-        if (participant_it != DomainDDSManager::participants.end() && 
-            qos_it != DomainDDSManager::participant_qos.end() &&
-            participant_it->second && qos_it->second) {
-            
-            DDS::ReturnCode_t ret = participant_it->second->set_qos(*qos_it->second);
+    m.def("set_participant_qos", []() -> bool {
+        if (DomainDDSManager::participant && DomainDDSManager::participant_qos) {
+            DDS::ReturnCode_t ret = DomainDDSManager::participant->set_qos(*DomainDDSManager::participant_qos);
             return (ret == DDS::RETCODE_OK);
         }
         return false;
-    }, py::arg("participant_id"), py::arg("qos_id"), "Set DomainParticipant QoS");
-    
-    // Cross-module access functions for pure ID-based communication
-    m.def("get_participant_by_id", [](int participant_id) -> py::object {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
-            // Return participant ID for cross-module communication
-            return py::cast(participant_id);
-        }
-        return py::none();
-    }, py::arg("participant_id"), "Get participant by ID for cross-module communication");
-    
-    m.def("register_participant_for_module", [](int participant_id, const std::string& module_name) -> bool {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
-            // Store module registration info
-            DomainDDSManager::module_registrations[module_name] = participant_id;
-            return true;
-        }
-        return false;
-    }, py::arg("participant_id"), py::arg("module_name"), "Register participant for specific module");
-    
-    m.def("get_registered_participant_id", [](const std::string& module_name) -> int {
-        auto it = DomainDDSManager::module_registrations.find(module_name);
-        if (it != DomainDDSManager::module_registrations.end()) {
-            return it->second;
-        }
-        return -1;
-    }, py::arg("module_name"), "Get registered participant ID for module");
+    }, "Set DomainParticipant QoS");
     
     // Factory operations
     m.def("get_factory_instance", []() -> bool {
@@ -287,33 +230,25 @@ PYBIND11_MODULE(_zrdds_domain, m) {
         return duration;
     }, "Create zero Duration dictionary");
     
-    // Utility functions
-    m.def("get_participant_count", []() {
-        return static_cast<int>(DomainDDSManager::participants.size());
-    }, "Get number of domain participants");
+    // Check if entities exist
+    m.def("participant_exists", []() -> bool {
+        return (DomainDDSManager::participant != nullptr);
+    }, "Check if participant exists");
     
-    m.def("get_participant_qos_count", []() {
-        return static_cast<int>(DomainDDSManager::participant_qos.size());
-    }, "Get number of participant QoS objects");
-    
-    // Check if participant exists (ID-based only, no pointer passing)
-    m.def("participant_exists", [](int participant_id) -> bool {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        return (it != DomainDDSManager::participants.end() && it->second != nullptr);
-    }, py::arg("participant_id"), "Check if participant exists by ID");
-    
-    // Domain isolation management: provide participant access for other modules (internal use)
-    m.def("get_participant_for_module", [](int participant_id, const std::string& module_name) -> py::object {
-        auto it = DomainDDSManager::participants.find(participant_id);
-        if (it != DomainDDSManager::participants.end() && it->second) {
-            // Verify module is registered
-            auto reg_it = DomainDDSManager::module_registrations.find(module_name);
-            if (reg_it != DomainDDSManager::module_registrations.end() && reg_it->second == participant_id) {
-                return py::cast(static_cast<void*>(it->second));
-            }
+    m.def("get_participant", []() -> py::object {
+        if (DomainDDSManager::participant) {
+            return py::cast(DomainDDSManager::participant);
         }
         return py::none();
-    }, py::arg("participant_id"), py::arg("module_name"), "Get participant pointer for registered module (domain isolation)");
+    }, "Get DomainParticipant object");
+    
+    m.def("participant_qos_exists", []() -> bool {
+        return (DomainDDSManager::participant_qos != nullptr);
+    }, "Check if participant QoS exists");
+    
+    m.def("factory_exists", []() -> bool {
+        return (DomainDDSManager::factory != nullptr);
+    }, "Check if factory exists");
     
     // Cleanup function
     m.def("finalize", []() {
@@ -324,10 +259,10 @@ PYBIND11_MODULE(_zrdds_domain, m) {
     // API info
     m.def("get_api_info", []() {
         py::dict info;
-        info["message"] = "ZRDDS Domain Module with Factory Pattern - C++ Interface";
-        info["participant_count"] = DomainDDSManager::participants.size();
-        info["participant_qos_count"] = DomainDDSManager::participant_qos.size();
-        info["factory_available"] = (DomainDDSManager::factory != nullptr);
+        info["message"] = "ZRDDS Domain Module - Simple Direct Interface";
+        info["participant_exists"] = (DomainDDSManager::participant != nullptr);
+        info["participant_qos_exists"] = (DomainDDSManager::participant_qos != nullptr);
+        info["factory_exists"] = (DomainDDSManager::factory != nullptr);
         
         py::list functions;
         functions.append(py::str("init"));

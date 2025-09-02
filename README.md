@@ -43,6 +43,7 @@
 .\build_module.bat publish   # Publisher/DataWriter
 .\build_module.bat subscribe # Subscriber/DataReader
 .\build_module.bat listener  # 各种Listener
+.\build_module.bat basic     # GuardCondition, WaitSet, ConditionSeq
 ```
 
 ### 使用CMake直接构建
@@ -60,6 +61,9 @@ cmake -DMODULE_TYPE=publish -B build
 cmake --build build --config Release
 
 cmake -DMODULE_TYPE=subscribe -B build
+cmake --build build --config Release
+
+cmake -DMODULE_TYPE=basic -B build
 cmake --build build --config Release
 ```
 
@@ -87,8 +91,9 @@ python test_final_dds_architecture.py
 **测试内容**：
 - ✅ 域隔离实现验证
 - ✅ 实体层次结构验证  
-- ✅ 纯ID-based通信验证
+- ✅ ID-based通信验证
 - ✅ 模块职责分离验证
+- ✅ Basic模块功能验证（GuardCondition, WaitSet, ConditionSeq, Duration）
 - ✅ 资源管理验证
 
 ### 🔧 模块导入测试
@@ -99,6 +104,7 @@ python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_topic; print('T
 python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_publish; print('Publish: OK')"
 python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_subscribe; print('Subscribe: OK')"
 python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_listener; print('Listener: OK')"
+python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_basic; print('Basic: OK')"
 ```
 
 ## 💡 快速使用示例
@@ -110,13 +116,14 @@ import sys
 sys.path.insert(0, 'zrpy')
 
 # 导入所有模块
-import _zrdds_domain, _zrdds_topic, _zrdds_publish, _zrdds_subscribe
+import _zrdds_domain, _zrdds_topic, _zrdds_publish, _zrdds_subscribe, _zrdds_basic
 
 # 初始化模块
 _zrdds_domain.init()
 _zrdds_topic.init()
 _zrdds_publish.init()
 _zrdds_subscribe.init()
+_zrdds_basic.init()
 
 # 1. 域管理 - 域隔离实现
 qos_id = _zrdds_domain.create_participant_qos()
@@ -173,6 +180,7 @@ _zrdds_subscribe.finalize()
 _zrdds_publish.finalize()
 _zrdds_topic.finalize()
 _zrdds_domain.finalize()
+_zrdds_basic.finalize()
 ```
 
 ### 运行完整测试
@@ -216,6 +224,7 @@ python test_final_dds_architecture.py
 | `_zrdds_publish` | 发布者和数据写入器管理 | 专注于发布功能 |
 | `_zrdds_subscribe` | 订阅者和数据读取器管理 | 专注于订阅功能 |
 | `_zrdds_listener` | 监听器工厂 | 提供各种监听器 |
+| `_zrdds_basic` | 基础DDS功能 | 提供GuardCondition, WaitSet, ConditionSeq, Duration |
 
 ## 📁 项目结构
 
@@ -318,6 +327,7 @@ project/
 .\build_module.bat publish
 .\build_module.bat subscribe
 .\build_module.bat listener
+.\build_module.bat basic
 
 # 2. 运行最终架构测试
 python test_final_dds_architecture.py

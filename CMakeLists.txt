@@ -14,7 +14,7 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 REQUIRED)
 
 # 设置要编译的模块类型
-# 可选值: basic, topic, domain, waitset, subscribe, publish, listener, main
+# 可选值: basic, topic, domain, waitset, subscribe, publish, listener, main, unified
 # 默认编译 basic 模块
 if(NOT DEFINED MODULE_TYPE)
     set(MODULE_TYPE "basic")
@@ -49,17 +49,20 @@ elseif(MODULE_TYPE STREQUAL "listener")
     set(SOURCE_FILE "src/bindings_listener.cpp")
     set(MODULE_NAME "_zrdds_listener")
     set(MODULE_DESCRIPTION "ZRDDS Listener Module (Listeners)")
+elseif(MODULE_TYPE STREQUAL "unified")
+    set(SOURCE_FILE "src/bindings_unified.cpp")
+    set(MODULE_NAME "_zrdds_unified")
+    set(MODULE_DESCRIPTION "Unified ZRDDS Module (Direct DDS Usage like C++)")
 elseif(MODULE_TYPE STREQUAL "activator")
     set(SOURCE_FILE "src/bindings_activator.cpp")
     set(MODULE_NAME "_zrdds_activator")
     set(MODULE_DESCRIPTION "ZRDDS Activation System (Unified Module Management)")
-
 # elseif(MODULE_TYPE STREQUAL "main")
 #     set(SOURCE_FILE "src/bindings_main.cpp")
 #     set(MODULE_NAME "zrdds_python"
 #     set(MODULE_DESCRIPTION "ZRDDS Main Module (Main functionality)"
 else()
-    message(FATAL_ERROR "Unknown MODULE_TYPE: ${MODULE_TYPE}. Supported types: basic, topic, domain, waitset, subscribe, publish, listener, activator, main")
+    message(FATAL_ERROR "Unknown MODULE_TYPE: ${MODULE_TYPE}. Supported types: basic, topic, domain, waitset, subscribe, publish, listener, unified, activator, main")
 endif()
 
 # 显示当前编译的模块信息

@@ -23,691 +23,524 @@
 #include "ZRBuiltinTypesTypeSupport.h"
 #include "ZRBuiltinTypesDataReader.h"
 #include "ZRDDSDataReader.h"
-
+#include "WaitSet.h"
+#include "Condition.h"
+#include "Duration_t.h"
 
 namespace py = pybind11;
 
-// Global storage for subscribe DDS entities
+// Simple Subscribe DDS Manager - like your simple DDS module
 struct SubscribeDDSManager {
-    static std::map<int, DDS::Subscriber*> subscribers;
-    static std::map<int, DDS::DataReader*> data_readers;
-    static std::map<int, DDS::SubscriberQos*> subscriber_qos;
-    static std::map<int, DDS::DataReaderQos*> datareader_qos;
-    static std::map<int, DDS::ReadCondition*> read_conditions;
-    
-    // Integration with Topic module
-    static std::map<int, DDS::DomainParticipant*> participants;
-    static std::map<std::string, DDS::Topic*> topics;
-    
-    static int next_id;
-    
-    static int generate_id() { return ++next_id; }
+    static DDS::DomainParticipant* participant;
+    static DDS::Topic* topic;
+    static DDS::Subscriber* subscriber;
+    static DDS::DataReader* datareader;
+    static DDS::SubscriberQos* subscriber_qos;
+    static DDS::DataReaderQos* datareader_qos;
+    static DDS::ReadCondition* read_condition;
+    static DDS::WaitSet* waitset;
     
     static void cleanup() {
-        // Clean up subscribers
-        for (auto& pair : subscribers) {
-            if (pair.second) {
-                // Note: Subscriber deletion is handled by DomainParticipant
-                // We just remove from our map
+        if (read_condition) {
+            if (datareader) {
+                datareader->delete_readcondition(read_condition);
             }
+            read_condition = nullptr;
         }
-        
-        // Clean up data readers
-        for (auto& pair : data_readers) {
-            if (pair.second) {
-                // Note: DataReader deletion is handled by Subscriber
-                // We just remove from our map
+        if (waitset) {
+            delete waitset;
+            waitset = nullptr;
+        }
+        if (datareader) {
+            if (subscriber) {
+                subscriber->delete_datareader(datareader);
             }
+            datareader = nullptr;
         }
-        
-        // Clean up read conditions
-        for (auto& pair : read_conditions) {
-            if (pair.second) {
-                // Note: ReadCondition deletion is handled by DataReader
-                // We just remove from our map
+        if (subscriber) {
+            if (participant) {
+                participant->delete_subscriber(subscriber);
             }
+            subscriber = nullptr;
         }
-        
-        // Clean up QoS objects
-        for (auto& pair : subscriber_qos) {
-            if (pair.second) {
-                delete pair.second;
+        if (topic) {
+            if (participant) {
+                participant->delete_topic(topic);
             }
+            topic = nullptr;
         }
-        
-        for (auto& pair : datareader_qos) {
-            if (pair.second) {
-                delete pair.second;
+        if (participant) {
+            DDS::DomainParticipantFactory* factory = DDS::DomainParticipantFactory::get_instance();
+            if (factory) {
+                participant->delete_contained_entities();
+                factory->delete_participant(participant);
             }
+            participant = nullptr;
         }
-        
-        // Clear all maps
-        subscribers.clear();
-        data_readers.clear();
-        subscriber_qos.clear();
-        datareader_qos.clear();
-        read_conditions.clear();
-        participants.clear();
-        topics.clear();
-    }
-    
-    // Integration methods
-    static void register_participant(int domain_id, DDS::DomainParticipant* participant) {
-        participants[domain_id] = participant;
-    }
-    
-    static void register_topic(const std::string& topic_name, DDS::Topic* topic) {
-        topics[topic_name] = topic;
-    }
-    
-    static DDS::DomainParticipant* get_participant(int domain_id) {
-        auto it = participants.find(domain_id);
-        return (it != participants.end()) ? it->second : nullptr;
-    }
-    
-    static DDS::Topic* get_topic(const std::string& topic_name) {
-        auto it = topics.find(topic_name);
-        return (it != topics.end()) ? it->second : nullptr;
+        if (subscriber_qos) {
+            delete subscriber_qos;
+            subscriber_qos = nullptr;
+        }
+        if (datareader_qos) {
+            delete datareader_qos;
+            datareader_qos = nullptr;
+        }
     }
 };
 
-std::map<int, DDS::Subscriber*> SubscribeDDSManager::subscribers;
-std::map<int, DDS::DataReader*> SubscribeDDSManager::data_readers;
-std::map<int, DDS::SubscriberQos*> SubscribeDDSManager::subscriber_qos;
-std::map<int, DDS::DataReaderQos*> SubscribeDDSManager::datareader_qos;
-std::map<int, DDS::ReadCondition*> SubscribeDDSManager::read_conditions;
-std::map<int, DDS::DomainParticipant*> SubscribeDDSManager::participants;
-std::map<std::string, DDS::Topic*> SubscribeDDSManager::topics;
-int SubscribeDDSManager::next_id = 4000;
+// Initialize static members
+DDS::DomainParticipant* SubscribeDDSManager::participant = nullptr;
+DDS::Topic* SubscribeDDSManager::topic = nullptr;
+DDS::Subscriber* SubscribeDDSManager::subscriber = nullptr;
+DDS::DataReader* SubscribeDDSManager::datareader = nullptr;
+DDS::SubscriberQos* SubscribeDDSManager::subscriber_qos = nullptr;
+DDS::DataReaderQos* SubscribeDDSManager::datareader_qos = nullptr;
+DDS::ReadCondition* SubscribeDDSManager::read_condition = nullptr;
+DDS::WaitSet* SubscribeDDSManager::waitset = nullptr;
 
 // Subscribe module wrapper
 PYBIND11_MODULE(_zrdds_subscribe, m) {
-    m.doc() = "ZRDDS Python Wrapper - Subscribe Module (C++ Interface with Factory Pattern)";
+    m.doc() = "ZRDDS Python Wrapper - Subscribe Module (Simple Direct Interface)";
     
     // Basic functions
     m.def("hello", []() {
-        return "Hello from ZRDDS Subscribe Module with Factory Pattern!";
+        return "Hello from ZRDDS Subscribe Module - Simple Direct Interface!";
     });
     
     m.def("get_version", []() {
-        return "ZRDDS Subscribe Module v2.0.0 - Factory Pattern Implementation";
+        return "ZRDDS Subscribe Module v3.0.0 - Simple Direct Implementation";
     });
     
     // Initialize subscribe module
     m.def("init", []() {
-        // Clean up any existing entities
         SubscribeDDSManager::cleanup();
         return true;
     }, "Initialize Subscribe DDS module");
     
-    // Integration functions for Topic module (ID-based only)
-    m.def("register_participant_by_id", [](int domain_id, int participant_id) -> bool {
-        // Subscribe模块不应该自己创建域参与者，应该从域模块获取
-        // 这里只是记录映射关系，实际的域参与者由域模块管理
-        SubscribeDDSManager::participants[domain_id] = nullptr; // 占位符，实际指针由域模块提供
-        return true;
-    }, py::arg("domain_id"), py::arg("participant_id"), "Register DomainParticipant by ID from Topic module");
-    
-    m.def("register_topic_by_id", [](const std::string& topic_name, int topic_id) -> bool {
-        // For now, we'll create a topic directly in subscribe module
-        // This is a temporary solution until we implement proper cross-module communication
-        
-        // Find participant in our local map
-        DDS::DomainParticipant* participant = nullptr;
-        for (auto& pair : SubscribeDDSManager::participants) {
-            participant = pair.second;
-            break; // Use the first available participant for now
+    // Create domain participant - direct creation
+    m.def("create_domain_participant", [](int domain_id) -> bool {
+        if (SubscribeDDSManager::participant) {
+            return true; // Already exists
         }
         
-        if (!participant) {
-            return false; // Participant not found
+        DDS::DomainParticipantFactory* factory = DDS::DomainParticipantFactory::get_instance();
+        if (!factory) {
+            return false;
         }
         
-        // Register type support first
-        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
-            participant,
-            "Bytes"
-        );
-        
-        if (register_result != DDS::RETCODE_OK) {
-            return false; // Failed to register type
-        }
-        
-        // Create topic with properly initialized QoS
-        DDS::TopicQos topic_qos;
-        DDS_DefaultTopicQosInitial(&topic_qos);
-        
-        DDS::Topic* topic = participant->create_topic(
-            topic_name.c_str(), 
-            "Bytes",
-            topic_qos, 
+        // Create participant with default QoS
+        SubscribeDDSManager::participant = factory->create_participant(
+            domain_id, 
+            DDS::DOMAINPARTICIPANT_QOS_DEFAULT, 
             nullptr, 
             DDS::STATUS_MASK_NONE
         );
         
-        if (topic) {
-            SubscribeDDSManager::topics[topic_name] = topic;
+        return (SubscribeDDSManager::participant != nullptr);
+    }, py::arg("domain_id"), "Create domain participant");
+    
+    // Create topic - direct creation
+    m.def("create_topic", [](const std::string& topic_name, const std::string& type_name = "Bytes") -> bool {
+        if (SubscribeDDSManager::topic) {
+            return true; // Already exists
+        }
+        
+        if (!SubscribeDDSManager::participant) {
+            return false; // Need participant first
+        }
+        
+        // Register type support
+        if (type_name == "Bytes") {
+            DDS::ReturnCode_t ret = DDS::BytesTypeSupport::get_instance()->register_type(
+                SubscribeDDSManager::participant, 
+            "Bytes"
+        );
+            if (ret != DDS::RETCODE_OK) {
+            return false;
+            }
+        }
+        
+        // Create topic with default QoS
+        SubscribeDDSManager::topic = SubscribeDDSManager::participant->create_topic(
+            topic_name.c_str(), 
+            type_name.c_str(),
+            DDS::TOPIC_QOS_DEFAULT,
+            nullptr, 
+            DDS::STATUS_MASK_NONE
+        );
+        
+        return (SubscribeDDSManager::topic != nullptr);
+    }, py::arg("topic_name"), py::arg("type_name") = "Bytes", "Create Topic");
+    
+    // Create SubscriberQos - direct creation
+    m.def("create_subscriber_qos", []() -> bool {
+        if (SubscribeDDSManager::subscriber_qos) {
+            return true; // Already exists
+        }
+        
+        SubscribeDDSManager::subscriber_qos = new DDS::SubscriberQos();
+        if (SubscribeDDSManager::subscriber_qos) {
+            DDS_DefaultSubscriberQosInitial(SubscribeDDSManager::subscriber_qos);
             return true;
         }
         return false;
-    }, py::arg("topic_name"), py::arg("topic_id"), "Register Topic by ID from Topic module");
+    }, "Create SubscriberQos with ZRDDS default values");
     
-    // Factory functions for SubscriberQos
-    m.def("create_subscriber_qos", []() -> int {
-        DDS::SubscriberQos* qos = new DDS::SubscriberQos();
-        if (qos) {
-            // Use ZRDDS default QoS initialization function
+    m.def("delete_subscriber_qos", []() -> bool {
+        if (SubscribeDDSManager::subscriber_qos) {
+            delete SubscribeDDSManager::subscriber_qos;
+            SubscribeDDSManager::subscriber_qos = nullptr;
+            return true;
+        }
+        return false;
+    }, "Delete SubscriberQos");
+    
+    // Create Subscriber - direct creation
+    m.def("create_subscriber", []() -> bool {
+        if (SubscribeDDSManager::subscriber) {
+            return true; // Already exists
+        }
+        
+        if (!SubscribeDDSManager::participant) {
+            return false; // Need participant first
+        }
+        
+        DDS::SubscriberQos* qos = SubscribeDDSManager::subscriber_qos;
+        if (!qos) {
+            // Create default QoS if not exists
+            qos = new DDS::SubscriberQos();
             DDS_DefaultSubscriberQosInitial(qos);
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::subscriber_qos[id] = qos;
-            return id;
         }
-        return -1;
-    }, "Create SubscriberQos with ZRDDS default values and return ID");
+        
+        SubscribeDDSManager::subscriber = SubscribeDDSManager::participant->create_subscriber(
+            *qos,
+            nullptr,
+            DDS::STATUS_MASK_NONE
+        );
+        
+        return (SubscribeDDSManager::subscriber != nullptr);
+    }, "Create Subscriber");
     
-    m.def("delete_subscriber_qos", [](int qos_id) -> bool {
-        auto it = SubscribeDDSManager::subscriber_qos.find(qos_id);
-        if (it != SubscribeDDSManager::subscriber_qos.end()) {
-            if (it->second) {
-                delete it->second;
+    m.def("delete_subscriber", []() -> bool {
+        if (SubscribeDDSManager::subscriber && SubscribeDDSManager::participant) {
+            DDS::ReturnCode_t ret = SubscribeDDSManager::participant->delete_subscriber(SubscribeDDSManager::subscriber);
+            if (ret == DDS::RETCODE_OK) {
+                SubscribeDDSManager::subscriber = nullptr;
+                return true;
             }
-            SubscribeDDSManager::subscriber_qos.erase(it);
+        }
+        return false;
+    }, "Delete Subscriber");
+    
+    // Create DataReaderQos - direct creation
+    m.def("create_datareader_qos", []() -> bool {
+        if (SubscribeDDSManager::datareader_qos) {
+            return true; // Already exists
+        }
+        
+        SubscribeDDSManager::datareader_qos = new DDS::DataReaderQos();
+        if (SubscribeDDSManager::datareader_qos) {
+            DDS_DefaultDataReaderQosInitial(SubscribeDDSManager::datareader_qos);
             return true;
         }
         return false;
-    }, py::arg("qos_id"), "Delete SubscriberQos by ID");
+    }, "Create DataReaderQos with ZRDDS default values");
     
-    // Factory functions for DataReaderQos
-    m.def("create_datareader_qos", []() -> int {
-        DDS::DataReaderQos* qos = new DDS::DataReaderQos();
-        if (qos) {
-            // Use ZRDDS default QoS initialization function
+    m.def("delete_datareader_qos", []() -> bool {
+        if (SubscribeDDSManager::datareader_qos) {
+            delete SubscribeDDSManager::datareader_qos;
+            SubscribeDDSManager::datareader_qos = nullptr;
+            return true;
+        }
+        return false;
+    }, "Delete DataReaderQos");
+    
+    // Create DataReader - direct creation
+    m.def("create_datareader", []() -> bool {
+        if (SubscribeDDSManager::datareader) {
+            return true; // Already exists
+        }
+        
+        if (!SubscribeDDSManager::subscriber || !SubscribeDDSManager::topic) {
+            return false; // Need subscriber and topic first
+        }
+        
+        DDS::DataReaderQos* qos = SubscribeDDSManager::datareader_qos;
+        if (!qos) {
+            // Create default QoS if not exists
+            qos = new DDS::DataReaderQos();
             DDS_DefaultDataReaderQosInitial(qos);
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::datareader_qos[id] = qos;
-            return id;
         }
-        return -1;
-    }, "Create DataReaderQos with ZRDDS default values and return ID");
+        
+        SubscribeDDSManager::datareader = SubscribeDDSManager::subscriber->create_datareader(
+            SubscribeDDSManager::topic,
+            *qos,
+            nullptr,
+            DDS::STATUS_MASK_NONE
+        );
+        
+        return (SubscribeDDSManager::datareader != nullptr);
+    }, "Create DataReader");
     
-    m.def("delete_datareader_qos", [](int qos_id) -> bool {
-        auto it = SubscribeDDSManager::datareader_qos.find(qos_id);
-        if (it != SubscribeDDSManager::datareader_qos.end()) {
-            if (it->second) {
-                delete it->second;
+    m.def("delete_datareader", []() -> bool {
+        if (SubscribeDDSManager::datareader && SubscribeDDSManager::subscriber) {
+            DDS::ReturnCode_t ret = SubscribeDDSManager::subscriber->delete_datareader(SubscribeDDSManager::datareader);
+            if (ret == DDS::RETCODE_OK) {
+                SubscribeDDSManager::datareader = nullptr;
+            return true;
             }
-            SubscribeDDSManager::datareader_qos.erase(it);
+        }
+        return false;
+    }, "Delete DataReader");
+    
+    // Create ReadCondition - direct creation
+    m.def("create_readcondition", []() -> bool {
+        if (SubscribeDDSManager::read_condition) {
+            return true; // Already exists
+        }
+        
+        if (!SubscribeDDSManager::datareader) {
+            return false; // Need datareader first
+        }
+        
+        SubscribeDDSManager::read_condition = SubscribeDDSManager::datareader->create_readcondition(
+            DDS::ANY_SAMPLE_STATE,
+            DDS::ANY_VIEW_STATE,
+            DDS::ANY_INSTANCE_STATE
+        );
+        
+        return (SubscribeDDSManager::read_condition != nullptr);
+    }, "Create ReadCondition");
+    
+    m.def("delete_readcondition", []() -> bool {
+        if (SubscribeDDSManager::read_condition && SubscribeDDSManager::datareader) {
+            DDS::ReturnCode_t ret = SubscribeDDSManager::datareader->delete_readcondition(SubscribeDDSManager::read_condition);
+            if (ret == DDS::RETCODE_OK) {
+                SubscribeDDSManager::read_condition = nullptr;
+                return true;
+            }
+        }
+        return false;
+    }, "Delete ReadCondition");
+    
+    // Create WaitSet - direct creation
+    m.def("create_waitset", []() -> bool {
+        if (SubscribeDDSManager::waitset) {
+            return true; // Already exists
+        }
+        
+        SubscribeDDSManager::waitset = new DDS::WaitSet();
+        return (SubscribeDDSManager::waitset != nullptr);
+    }, "Create WaitSet");
+    
+    m.def("delete_waitset", []() -> bool {
+        if (SubscribeDDSManager::waitset) {
+            delete SubscribeDDSManager::waitset;
+            SubscribeDDSManager::waitset = nullptr;
             return true;
         }
         return false;
-    }, py::arg("qos_id"), "Delete DataReaderQos by ID");
+    }, "Delete WaitSet");
     
-    // Enhanced Subscriber creation with Topic module integration
-    m.def("create_subscriber", [](int domain_id, int qos_id = -1, 
-                                  void* listener = nullptr) -> int {
-        DDS::DomainParticipant* participant = SubscribeDDSManager::get_participant(domain_id);
-        if (!participant) {
-            return -1; // Participant not found
-        }
-        
-        DDS::SubscriberQos* qos = nullptr;
-        if (qos_id != -1) {
-            auto it = SubscribeDDSManager::subscriber_qos.find(qos_id);
-            if (it != SubscribeDDSManager::subscriber_qos.end()) {
-                qos = it->second;
-            }
-        }
-        
-        // Use properly initialized default QoS if none provided
-        DDS::SubscriberQos default_qos;
-        if (!qos) {
-            DDS_DefaultSubscriberQosInitial(&default_qos);
-            qos = &default_qos;
-        }
-        const DDS::SubscriberQos& final_qos = *qos;
-        
-        DDS::Subscriber* subscriber = participant->create_subscriber(
-            final_qos, 
-            static_cast<DDS::SubscriberListener*>(listener), 
-            DDS::STATUS_MASK_ALL
-        );
-        
-        if (subscriber) {
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::subscribers[id] = subscriber;
-            return id;
-        }
-        return -1;
-    }, py::arg("domain_id"), py::arg("qos_id") = -1, py::arg("listener") = nullptr, 
-       "Create Subscriber for domain and return ID");
-    
-    // Pure ID-based Subscriber creation - completely no pointer passing
-    m.def("create_subscriber_pure_id", [](int participant_id, int qos_id = -1) -> int {
-        // Get participant from domain module using cross-module communication
-        // This is a simplified approach - in a real implementation, we'd have proper module communication
-        
-        // Find participant in our local map (this should be registered by domain module)
-        DDS::DomainParticipant* participant = nullptr;
-        for (auto& pair : SubscribeDDSManager::participants) {
-            participant = pair.second;
-            break; // Use the first available participant for now
-        }
-        
-        if (!participant) {
-            return -1; // Participant not found
-        }
-        
-        DDS::SubscriberQos* qos = nullptr;
-        if (qos_id != -1) {
-            auto it = SubscribeDDSManager::subscriber_qos.find(qos_id);
-            if (it != SubscribeDDSManager::subscriber_qos.end()) {
-                qos = it->second;
-            }
-        }
-        
-        // Use properly initialized default QoS if none provided
-        DDS::SubscriberQos default_qos;
-        if (!qos) {
-            DDS_DefaultSubscriberQosInitial(&default_qos);
-            qos = &default_qos;
-        }
-        const DDS::SubscriberQos& final_qos = *qos;
-        
-        DDS::Subscriber* subscriber = participant->create_subscriber(
-            final_qos, 
-            nullptr,  // No listener for pure ID-based approach
-            DDS::STATUS_MASK_ALL
-        );
-        
-        if (subscriber) {
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::subscribers[id] = subscriber;
-            return id;
-        }
-        return -1;
-    }, py::arg("participant_id"), py::arg("qos_id") = -1, 
-       "Create Subscriber using participant ID (pure ID-based, no pointer passing)");
-    
-    m.def("delete_subscriber", [](int subscriber_id) -> bool {
-        auto it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (it != SubscribeDDSManager::subscribers.end()) {
-            // Subscriber deletion is handled by DomainParticipant
-            SubscribeDDSManager::subscribers.erase(it);
-            return true;
+    // WaitSet operations
+    m.def("attach_condition", []() -> bool {
+        if (SubscribeDDSManager::waitset && SubscribeDDSManager::read_condition) {
+            DDS::ReturnCode_t ret = SubscribeDDSManager::waitset->attach_condition(SubscribeDDSManager::read_condition);
+            return (ret == DDS::RETCODE_OK);
         }
         return false;
-    }, py::arg("subscriber_id"), "Delete Subscriber by ID");
+    }, "Attach read condition to WaitSet");
     
-    // Enhanced DataReader creation with Topic module integration
-    m.def("create_datareader", [](int subscriber_id, const std::string& topic_name, int qos_id = -1,
-                                  void* listener = nullptr) -> int {
-        auto subscriber_it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (subscriber_it == SubscribeDDSManager::subscribers.end() || !subscriber_it->second) {
-            return -1; // Subscriber not found
-        }
-        
-        DDS::Topic* topic = SubscribeDDSManager::get_topic(topic_name);
-        if (!topic) {
-            return -1; // Topic not found
-        }
-        
-        DDS::DataReaderQos* qos = nullptr;
-        if (qos_id != -1) {
-            auto qos_it = SubscribeDDSManager::datareader_qos.find(qos_id);
-            if (qos_it != SubscribeDDSManager::datareader_qos.end()) {
-                qos = qos_it->second;
-            }
-        }
-        
-        // Use properly initialized default QoS if none provided
-        DDS::DataReaderQos default_qos;
-        if (!qos) {
-            DDS_DefaultDataReaderQosInitial(&default_qos);
-            qos = &default_qos;
-        }
-        const DDS::DataReaderQos& final_qos = *qos;
-        
-        DDS::DataReader* reader = subscriber_it->second->create_datareader(
-            topic, 
-            final_qos, 
-            static_cast<DDS::DataReaderListener*>(listener), 
-            DDS::STATUS_MASK_ALL
-        );
-        
-        if (reader) {
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::data_readers[id] = reader;
-            return id;
-        }
-        return -1;
-    }, py::arg("subscriber_id"), py::arg("topic_name"), py::arg("qos_id") = -1, py::arg("listener") = nullptr,
-       "Create DataReader for topic and return ID");
-    
-    m.def("delete_datareader", [](int reader_id) -> bool {
-        auto it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (it != SubscribeDDSManager::data_readers.end()) {
-            // DataReader deletion is handled by Subscriber
-            SubscribeDDSManager::data_readers.erase(it);
-            return true;
+    m.def("detach_condition", []() -> bool {
+        if (SubscribeDDSManager::waitset && SubscribeDDSManager::read_condition) {
+            DDS::ReturnCode_t ret = SubscribeDDSManager::waitset->detach_condition(SubscribeDDSManager::read_condition);
+            return (ret == DDS::RETCODE_OK);
         }
         return false;
-    }, py::arg("reader_id"), "Delete DataReader by ID");
+    }, "Detach read condition from WaitSet");
     
-    // Pure ID-based DataReader creation - completely no pointer passing
-    m.def("create_datareader_pure_id", [](int subscriber_id, int topic_id, int qos_id = -1) -> int {
-        // Get subscriber by ID
-        auto subscriber_it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (subscriber_it == SubscribeDDSManager::subscribers.end() || !subscriber_it->second) {
-            return -1; // Subscriber not found
-        }
-        
-        // Get topic by ID (simplified approach - use first available topic)
-        DDS::Topic* topic = nullptr;
-        for (auto& topic_pair : SubscribeDDSManager::topics) {
-            topic = topic_pair.second;
-            break; // Use the first available topic for now
-        }
-        
-        if (!topic) {
-            return -1; // Topic not found
-        }
-        
-        // Get the participant from the topic
-        DDS::DomainParticipant* participant = topic->get_participant();
-        if (!participant) {
-            return -1; // Participant not found
-        }
-        
-        DDS::DataReaderQos* qos = nullptr;
-        if (qos_id != -1) {
-            auto qos_it = SubscribeDDSManager::datareader_qos.find(qos_id);
-            if (qos_it != SubscribeDDSManager::datareader_qos.end()) {
-                qos = qos_it->second;
-            }
-        }
-        
-        // Use properly initialized default QoS if none provided
-        DDS::DataReaderQos default_qos;
-        if (!qos) {
-            DDS_DefaultDataReaderQosInitial(&default_qos);
-            qos = &default_qos;
-        }
-        const DDS::DataReaderQos& final_qos = *qos;
-        
-        DDS::DataReader* reader = subscriber_it->second->create_datareader(
-            topic, 
-            final_qos, 
-            nullptr,  // No listener for pure ID-based approach
-            DDS::STATUS_MASK_ALL
-        );
-        
-        if (reader == nullptr) {
-            return -1; // DataReader creation failed
-        }
-        
-        // Store the reader and return ID
-        int id = SubscribeDDSManager::generate_id();
-        SubscribeDDSManager::data_readers[id] = reader;
-        return id;
-    }, py::arg("subscriber_id"), py::arg("topic_id"), py::arg("qos_id") = -1,
-       "Create DataReader using subscriber ID and topic ID (pure ID-based, no pointer passing)");
-    
-    // ReadCondition creation
-    m.def("create_readcondition", [](int reader_id, int sample_states = DDS::ANY_SAMPLE_STATE,
-                                     int view_states = DDS::ANY_VIEW_STATE,
-                                     int instance_states = DDS::ANY_INSTANCE_STATE) -> int {
-        auto reader_it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (reader_it == SubscribeDDSManager::data_readers.end() || !reader_it->second) {
-            return -1; // DataReader not found
-        }
-        
-        DDS::ReadCondition* condition = reader_it->second->create_readcondition(
-            static_cast<DDS::SampleStateMask>(sample_states),
-            static_cast<DDS::ViewStateMask>(view_states),
-            static_cast<DDS::InstanceStateMask>(instance_states)
-        );
-        
-        if (condition) {
-            int id = SubscribeDDSManager::generate_id();
-            SubscribeDDSManager::read_conditions[id] = condition;
-            return id;
-        }
-        return -1;
-    }, py::arg("reader_id"), py::arg("sample_states") = DDS::ANY_SAMPLE_STATE,
-       py::arg("view_states") = DDS::ANY_VIEW_STATE, py::arg("instance_states") = DDS::ANY_INSTANCE_STATE,
-       "Create ReadCondition for DataReader and return ID");
-    
-    m.def("delete_readcondition", [](int condition_id) -> bool {
-        auto it = SubscribeDDSManager::read_conditions.find(condition_id);
-        if (it != SubscribeDDSManager::read_conditions.end()) {
-            // ReadCondition deletion is handled by DataReader
-            SubscribeDDSManager::read_conditions.erase(it);
-            return true;
-        }
-        return false;
-    }, py::arg("condition_id"), "Delete ReadCondition by ID");
-    
-    // Enhanced DataReader operations
-    m.def("datareader_read", [](int reader_id, int max_samples = 1) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
+    m.def("wait_for_data", [](int timeout_seconds, int timeout_nanoseconds) -> py::object {
+        if (!SubscribeDDSManager::waitset) {
             return py::none();
         }
         
-        // For now, return a placeholder result
-        // This would need to be implemented with proper data type handling
-        py::dict result;
-        result["data"] = py::bytes(""); // Placeholder data
-        result["sample_info"] = py::dict(); // Placeholder sample info
-        result["samples_read"] = 0;
-        return result;
-    }, py::arg("reader_id"), py::arg("max_samples") = 1, "Read data using DataReader");
-    
-    m.def("datareader_take", [](int reader_id, int max_samples = 1) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
+        // Create duration
+        DDS::Duration_t timeout;
+        timeout.sec = timeout_seconds;
+        timeout.nanosec = timeout_nanoseconds;
+        
+        // Create condition sequence
+        DDS::ConditionSeq active_conditions;
+        
+        // Wait
+        DDS::ReturnCode_t ret = SubscribeDDSManager::waitset->wait(active_conditions, timeout);
+        
+        if (ret == DDS::RETCODE_TIMEOUT) {
+            return py::bool_(false);
+        } else if (ret != DDS::RETCODE_OK) {
             return py::none();
         }
         
-        // For now, return a placeholder result
-        // This would need to be implemented with proper data type handling
-        py::dict result;
-        result["data"] = py::bytes(""); // Placeholder data
-        result["sample_info"] = py::dict(); // Placeholder sample info
-        result["samples_taken"] = 0;
-        return result;
-    }, py::arg("reader_id"), py::arg("max_samples") = 1, "Take data using DataReader");
-    
-    m.def("datareader_read_next", [](int reader_id) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
-            return py::none();
-        }
-        
-        // For now, return a placeholder result
-        py::dict result;
-        result["data"] = py::bytes(""); // Placeholder data
-        result["sample_info"] = py::dict(); // Placeholder sample info
-        result["success"] = false;
-        return result;
-    }, py::arg("reader_id"), "Read next sample using DataReader");
-    
-    m.def("datareader_take_next", [](int reader_id) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(reader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
-            return py::none();
-        }
-        
-        // For now, return a placeholder result
-        py::dict result;
-        result["data"] = py::bytes(""); // Placeholder data
-        result["sample_info"] = py::dict(); // Placeholder sample info
-        result["success"] = false;
-        return result;
-    }, py::arg("reader_id"), "Take next sample using DataReader");
-    
-    // Subscriber operations
-    m.def("subscriber_begin_access", [](int subscriber_id) -> bool {
-        auto it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (it == SubscribeDDSManager::subscribers.end() || !it->second) {
-            return false;
-        }
-        
-        DDS::ReturnCode_t ret = it->second->begin_access();
-        return (ret == DDS::RETCODE_OK);
-    }, py::arg("subscriber_id"), "Begin access to subscriber");
-    
-    m.def("subscriber_end_access", [](int subscriber_id) -> bool {
-        auto it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (it == SubscribeDDSManager::subscribers.end() || !it->second) {
-            return false;
-        }
-        
-        DDS::ReturnCode_t ret = it->second->end_access();
-        return (ret == DDS::RETCODE_OK);
-    }, py::arg("subscriber_id"), "End access to subscriber");
-    
-    m.def("subscriber_notify_datareaders", [](int subscriber_id) -> bool {
-        auto it = SubscribeDDSManager::subscribers.find(subscriber_id);
-        if (it == SubscribeDDSManager::subscribers.end() || !it->second) {
-            return false;
-        }
-        
-        DDS::ReturnCode_t ret = it->second->notify_datareaders();
-        return (ret == DDS::RETCODE_OK);
-    }, py::arg("subscriber_id"), "Notify data readers");
-    
-    // Data reading functions
-    m.def("read_bytes_data", [](int datareader_id) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
-            return py::none();
-        }
-        
-        DDS::DataReader* reader = it->second;
-        
-        // For now, return a placeholder to indicate the function is called
-        // TODO: Implement proper data reading when ZRDDS template issues are resolved
-        // This is a temporary workaround to test the communication flow
-        return py::str("PLACEHOLDER_DATA_RECEIVED");
-    }, py::arg("datareader_id"), "Read bytes data from DataReader");
-    
-    m.def("read_string_data", [](int datareader_id) -> py::object {
-        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
-            return py::none();
-        }
-        
-        DDS::DataReader* reader = it->second;
-        
-        // Temporarily disabled due to template compatibility issues
-        // TODO: Fix ZRDDSDataReader template compatibility
-        return py::none();
-    }, py::arg("datareader_id"), "Read string data from DataReader");
-    
-    m.def("wait_for_data", [](int datareader_id, int timeout_seconds = 5) -> bool {
-        auto it = SubscribeDDSManager::data_readers.find(datareader_id);
-        if (it == SubscribeDDSManager::data_readers.end() || !it->second) {
-            return false;
-        }
-        
-        DDS::DataReader* reader = it->second;
-        
-        // Simple polling approach - wait for data to become available
-        auto start_time = std::chrono::steady_clock::now();
-        auto timeout = std::chrono::seconds(timeout_seconds);
-        
-        while (std::chrono::steady_clock::now() - start_time < timeout) {
-            // Check if data is available by trying to read
-            DDS::BytesSeq data_seq;
-            DDS::SampleInfoSeq info_seq;
-            
-            // Temporarily disabled due to template compatibility issues
-            // TODO: Fix ZRDDSDataReader template compatibility
-            // For now, just wait and return false
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            
-            // Wait a bit before checking again
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        
-        return false;  // Timeout
-    }, py::arg("datareader_id"), py::arg("timeout_seconds") = 5, "Wait for data to become available");
-    
-    // ReadCondition operations
-    m.def("readcondition_get_datareader", [](int condition_id) -> int {
-        auto it = SubscribeDDSManager::read_conditions.find(condition_id);
-        if (it == SubscribeDDSManager::read_conditions.end() || !it->second) {
-            return -1;
-        }
-        
-        DDS::DataReader* reader = it->second->get_datareader();
-        if (reader) {
-            // Find the reader ID in our map
-            for (auto& pair : SubscribeDDSManager::data_readers) {
-                if (pair.second == reader) {
-                    return pair.first;
+        // Return list of active condition IDs
+        py::list result;
+        DDS::Long length = ConditionSeq_get_length(&active_conditions);
+        for (DDS::Long i = 0; i < length; ++i) {
+            DDS::ConditionPtr* ptr = ConditionSeq_get_reference(&active_conditions, i);
+            if (ptr && *ptr) {
+                // Check if it's our read condition
+                if (*ptr == SubscribeDDSManager::read_condition) {
+                    result.append(py::int_(1)); // Read condition ID
                 }
             }
         }
-        return -1;
-    }, py::arg("condition_id"), "Get DataReader associated with ReadCondition");
-    
-    m.def("readcondition_get_sample_state_mask", [](int condition_id) -> int {
-        auto it = SubscribeDDSManager::read_conditions.find(condition_id);
-        if (it == SubscribeDDSManager::read_conditions.end() || !it->second) {
-            return -1;
+        
+        return result;
+    }, py::arg("timeout_seconds") = 1, py::arg("timeout_nanoseconds") = 0, "Wait for data");
+
+    // Data reading functions
+    m.def("read_bytes_data", []() -> py::object {
+        if (!SubscribeDDSManager::datareader) {
+            return py::none();
         }
         
-        return static_cast<int>(it->second->get_sample_state_mask());
-    }, py::arg("condition_id"), "Get sample state mask of ReadCondition");
-    
-    m.def("readcondition_get_view_state_mask", [](int condition_id) -> int {
-        auto it = SubscribeDDSManager::read_conditions.find(condition_id);
-        if (it == SubscribeDDSManager::read_conditions.end() || !it->second) {
-            return -1;
+        // Cast to BytesDataReader for typed reading
+        DDS::BytesDataReader* bytes_reader = 
+            dynamic_cast<DDS::BytesDataReader*>(SubscribeDDSManager::datareader);
+        if (!bytes_reader) {
+            return py::none();
         }
         
-        return static_cast<int>(it->second->get_view_state_mask());
-    }, py::arg("condition_id"), "Get view state mask of ReadCondition");
-    
-    m.def("readcondition_get_instance_state_mask", [](int condition_id) -> int {
-        auto it = SubscribeDDSManager::read_conditions.find(condition_id);
-        if (it == SubscribeDDSManager::read_conditions.end() || !it->second) {
-            return -1;
+        // Read data - like your C++ code
+        DDS::Bytes sample;
+        DDS::SampleInfo info;
+        
+        // Initialize sample properly - allocate enough space
+        DDS_OctetSeq_set_length(&sample.value, 1024);  // Allocate 1KB buffer
+        
+        // Try read_next_sample first
+        DDS::ReturnCode_t rtn = bytes_reader->read_next_sample(sample, info);
+        
+        if (rtn == DDS::RETCODE_OK && info.valid_data) {
+            // Convert Bytes to Python string
+            std::string result;
+            DDS::ULong length = DDS_OctetSeq_get_length(&sample.value);
+            for (DDS::ULong i = 0; i < length; ++i) {
+                DDS::Octet* ref = DDS_OctetSeq_get_reference(&sample.value, i);
+                if (ref) {
+                    result += static_cast<char>(*ref);
+                }
+            }
+            return py::str(result);
         }
         
-        return static_cast<int>(it->second->get_instance_state_mask());
-    }, py::arg("condition_id"), "Get instance state mask of ReadCondition");
+        // If read failed, try take_next_sample
+        DDS_OctetSeq_set_length(&sample.value, 1024);  // Allocate 1KB buffer
+        rtn = bytes_reader->take_next_sample(sample, info);
+        
+        if (rtn == DDS::RETCODE_OK && info.valid_data) {
+            // Convert Bytes to Python string
+            std::string result;
+            DDS::ULong length = DDS_OctetSeq_get_length(&sample.value);
+            for (DDS::ULong i = 0; i < length; ++i) {
+                DDS::Octet* ref = DDS_OctetSeq_get_reference(&sample.value, i);
+                if (ref) {
+                    result += static_cast<char>(*ref);
+                }
+            }
+            return py::str(result);
+        }
+        
+        return py::none();
+    }, "Read bytes data from DataReader");
     
-    // Utility functions
-    m.def("get_subscriber_count", []() {
-        return static_cast<int>(SubscribeDDSManager::subscribers.size());
-    }, "Get number of subscribers");
+    m.def("read_string_data", []() -> py::object {
+        // For now, treat string data as bytes data
+        if (!SubscribeDDSManager::datareader) {
+            return py::none();
+        }
+        
+        // Cast to BytesDataReader for typed reading
+        DDS::BytesDataReader* bytes_reader = 
+            dynamic_cast<DDS::BytesDataReader*>(SubscribeDDSManager::datareader);
+        if (!bytes_reader) {
+            return py::none();
+        }
+        
+        // Read data - like your C++ code
+        DDS::Bytes sample;
+        DDS::SampleInfo info;
+        
+        // Initialize sample properly - allocate enough space
+        DDS_OctetSeq_set_length(&sample.value, 1024);  // Allocate 1KB buffer
+        
+        // Try read_next_sample first
+        DDS::ReturnCode_t rtn = bytes_reader->read_next_sample(sample, info);
+        
+        if (rtn == DDS::RETCODE_OK && info.valid_data) {
+            // Convert Bytes to Python string
+            std::string result;
+            DDS::ULong length = DDS_OctetSeq_get_length(&sample.value);
+            for (DDS::ULong i = 0; i < length; ++i) {
+                DDS::Octet* ref = DDS_OctetSeq_get_reference(&sample.value, i);
+                if (ref) {
+                    result += static_cast<char>(*ref);
+                }
+            }
+            return py::str(result);
+        }
+        
+        // If read failed, try take_next_sample
+        DDS_OctetSeq_set_length(&sample.value, 1024);  // Allocate 1KB buffer
+        rtn = bytes_reader->take_next_sample(sample, info);
+        
+        if (rtn == DDS::RETCODE_OK && info.valid_data) {
+            // Convert Bytes to Python string
+            std::string result;
+            DDS::ULong length = DDS_OctetSeq_get_length(&sample.value);
+            for (DDS::ULong i = 0; i < length; ++i) {
+                DDS::Octet* ref = DDS_OctetSeq_get_reference(&sample.value, i);
+                if (ref) {
+                    result += static_cast<char>(*ref);
+                }
+            }
+            return py::str(result);
+        }
+        
+        return py::none();
+    }, "Read string data from DataReader");
     
-    m.def("get_datareader_count", []() {
-        return static_cast<int>(SubscribeDDSManager::data_readers.size());
-    }, "Get number of data readers");
+    // Check if entities exist
+    m.def("participant_exists", []() -> bool {
+        return (SubscribeDDSManager::participant != nullptr);
+    }, "Check if participant exists");
     
-    m.def("get_subscriber_qos_count", []() {
-        return static_cast<int>(SubscribeDDSManager::subscriber_qos.size());
-    }, "Get number of subscriber QoS objects");
+    m.def("topic_exists", []() -> bool {
+        return (SubscribeDDSManager::topic != nullptr);
+    }, "Check if topic exists");
     
-    m.def("get_datareader_qos_count", []() {
-        return static_cast<int>(SubscribeDDSManager::datareader_qos.size());
-    }, "Get number of datareader QoS objects");
+    m.def("subscriber_exists", []() -> bool {
+        return (SubscribeDDSManager::subscriber != nullptr);
+    }, "Check if subscriber exists");
     
-    m.def("get_readcondition_count", []() {
-        return static_cast<int>(SubscribeDDSManager::read_conditions.size());
-    }, "Get number of read conditions");
+    m.def("datareader_exists", []() -> bool {
+        return (SubscribeDDSManager::datareader != nullptr);
+    }, "Check if datareader exists");
     
-    m.def("get_participant_count", []() {
-        return static_cast<int>(SubscribeDDSManager::participants.size());
-    }, "Get number of registered participants");
+    m.def("subscriber_qos_exists", []() -> bool {
+        return (SubscribeDDSManager::subscriber_qos != nullptr);
+    }, "Check if subscriber QoS exists");
     
-    m.def("get_topic_count", []() {
-        return static_cast<int>(SubscribeDDSManager::topics.size());
-    }, "Get number of registered topics");
+    m.def("datareader_qos_exists", []() -> bool {
+        return (SubscribeDDSManager::datareader_qos != nullptr);
+    }, "Check if datareader QoS exists");
+    
+    m.def("readcondition_exists", []() -> bool {
+        return (SubscribeDDSManager::read_condition != nullptr);
+    }, "Check if read condition exists");
+    
+    m.def("waitset_exists", []() -> bool {
+        return (SubscribeDDSManager::waitset != nullptr);
+    }, "Check if waitset exists");
     
     // Cleanup function
     m.def("finalize", []() {
@@ -718,40 +551,37 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
     // API info
     m.def("get_api_info", []() {
         py::dict info;
-        info["message"] = "ZRDDS Subscribe Module with Factory Pattern - C++ Interface";
-        info["subscriber_count"] = SubscribeDDSManager::subscribers.size();
-        info["datareader_count"] = SubscribeDDSManager::data_readers.size();
-        info["subscriber_qos_count"] = SubscribeDDSManager::subscriber_qos.size();
-        info["datareader_qos_count"] = SubscribeDDSManager::datareader_qos.size();
-        info["readcondition_count"] = SubscribeDDSManager::read_conditions.size();
-        info["participant_count"] = SubscribeDDSManager::participants.size();
-        info["topic_count"] = SubscribeDDSManager::topics.size();
+        info["message"] = "ZRDDS Subscribe Module - Simple Direct Interface";
+        info["participant_exists"] = (SubscribeDDSManager::participant != nullptr);
+        info["topic_exists"] = (SubscribeDDSManager::topic != nullptr);
+        info["subscriber_exists"] = (SubscribeDDSManager::subscriber != nullptr);
+        info["datareader_exists"] = (SubscribeDDSManager::datareader != nullptr);
+        info["subscriber_qos_exists"] = (SubscribeDDSManager::subscriber_qos != nullptr);
+        info["datareader_qos_exists"] = (SubscribeDDSManager::datareader_qos != nullptr);
+        info["readcondition_exists"] = (SubscribeDDSManager::read_condition != nullptr);
+        info["waitset_exists"] = (SubscribeDDSManager::waitset != nullptr);
         
         py::list functions;
         functions.append(py::str("init"));
-        functions.append(py::str("register_participant"));
-        functions.append(py::str("register_topic"));
+        functions.append(py::str("create_domain_participant"));
+        functions.append(py::str("create_topic"));
         functions.append(py::str("create_subscriber_qos"));
         functions.append(py::str("delete_subscriber_qos"));
-        functions.append(py::str("create_datareader_qos"));
-        functions.append(py::str("delete_datareader_qos"));
         functions.append(py::str("create_subscriber"));
         functions.append(py::str("delete_subscriber"));
+        functions.append(py::str("create_datareader_qos"));
+        functions.append(py::str("delete_datareader_qos"));
         functions.append(py::str("create_datareader"));
         functions.append(py::str("delete_datareader"));
         functions.append(py::str("create_readcondition"));
         functions.append(py::str("delete_readcondition"));
-        functions.append(py::str("datareader_read"));
-        functions.append(py::str("datareader_take"));
-        functions.append(py::str("datareader_read_next"));
-        functions.append(py::str("datareader_take_next"));
-        functions.append(py::str("subscriber_begin_access"));
-        functions.append(py::str("subscriber_end_access"));
-        functions.append(py::str("subscriber_notify_datareaders"));
-        functions.append(py::str("readcondition_get_datareader"));
-        functions.append(py::str("readcondition_get_sample_state_mask"));
-        functions.append(py::str("readcondition_get_view_state_mask"));
-        functions.append(py::str("readcondition_get_instance_state_mask"));
+        functions.append(py::str("create_waitset"));
+        functions.append(py::str("delete_waitset"));
+        functions.append(py::str("attach_condition"));
+        functions.append(py::str("detach_condition"));
+        functions.append(py::str("wait_for_data"));
+        functions.append(py::str("read_bytes_data"));
+        functions.append(py::str("read_string_data"));
         functions.append(py::str("finalize"));
         info["main_functions"] = functions;
         return info;
