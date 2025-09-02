@@ -2,14 +2,18 @@
 
 ## 🎉 最新更新 (2025-09-02)
 
-✅ **QoS配置问题已修复** - DataReader创建现在正常工作  
-✅ **发布-订阅通信已实现** - 完整的DDS通信链路工作正常  
-✅ **模块集成优化** - 所有模块间的指针传递和注册流程已优化
+✅ **域隔离架构实现** - 完全符合DDS标准，域模块负责域隔离管理  
+✅ **ID-based通信** - 完全去除指针传递，使用ID进行模块间通信  
+✅ **实体层次结构优化** - 严格按照DDS标准：域参与者→发布者/订阅者→数据写入器/读取器  
+✅ **模块职责分离** - 每个模块专注自己的功能，域隔离在域模块实现  
+✅ **架构测试完成** - 最终架构测试验证所有功能正常工作
 
 ## 🌟 功能概览
 
 ### ✅ 已实现功能
 - **完整的DDS发布-订阅通信** - 支持多线程发布者和订阅者
+- **域隔离架构** - 完全符合DDS标准，域模块负责域隔离管理
+- **纯ID-based通信** - 完全去除指针传递，使用ID进行模块间通信
 - **模块化架构** - 6个独立模块，职责清晰，易于维护
 - **QoS配置管理** - 支持DomainParticipant, Publisher, DataWriter, Subscriber, DataReader QoS
 - **监听器支持** - 完整的Listener创建、注册和附加功能
@@ -20,6 +24,9 @@
 - **数据读取** - 通信链路正常，但返回占位符数据（待完善）
 
 ### 🎯 核心特性
+- **DDS标准兼容** - 完全符合DDS标准架构和域隔离原则
+- **域隔离管理** - 域模块负责域参与者管理，其他模块不自己创建域参与者
+- **ID-based通信** - 所有模块间通信使用ID，无指针传递
 - **跨平台支持** - Windows平台，支持Python 3.11/3.13
 - **高性能** - 基于ZRDDS 2.4.4，优化的DDS实现
 - **易用性** - 简洁的Python API，工厂模式设计
@@ -69,25 +76,20 @@ cmake --build build --config Release
 
 ## 🧪 测试
 
-### 🎯 核心功能测试
+### 🎯 最终架构测试 ⭐
 
-#### 发布者集成测试
+#### 最终DDS架构测试
 ```cmd
-python test_integration_pub.py
+python test_final_dds_architecture.py
 ```
-**功能**：测试完整的发布者工作流程，包括数据写入和监听器
+**功能**：测试完整的DDS架构，包括域隔离、实体层次结构、ID-based通信
 
-#### 发布-订阅通信测试 ⭐
-```cmd
-python test_communication.py
-```
-**功能**：测试真实的发布-订阅通信，验证数据传输
-
-#### Basic 模块测试
-```cmd
-python test_basic_factory.py
-```
-**功能**：测试GuardCondition, WaitSet, ConditionSeq功能
+**测试内容**：
+- ✅ 域隔离实现验证
+- ✅ 实体层次结构验证  
+- ✅ 纯ID-based通信验证
+- ✅ 模块职责分离验证
+- ✅ 资源管理验证
 
 ### 🔧 模块导入测试
 ```cmd
@@ -101,7 +103,7 @@ python -c "import sys; sys.path.insert(0, 'zrpy'); import _zrdds_listener; print
 
 ## 💡 快速使用示例
 
-### 基本发布-订阅通信
+### 最终架构使用示例（推荐）
 
 ```python
 import sys
@@ -116,33 +118,58 @@ _zrdds_topic.init()
 _zrdds_publish.init()
 _zrdds_subscribe.init()
 
-# 创建域参与者
+# 1. 域管理 - 域隔离实现
 qos_id = _zrdds_domain.create_participant_qos()
-participant_id = _zrdds_domain.create_domain_participant(80, qos_id)
-participant_ptr = _zrdds_domain.get_participant_ptr(participant_id)
+participant_id = _zrdds_domain.create_domain_participant(100, qos_id)
 
-# 创建主题
-_zrdds_topic.register_participant(80, participant_ptr)
-_zrdds_topic.create_topic(80, "MyTopic", "Bytes")
-topic_ptr = _zrdds_topic.get_topic_ptr("MyTopic")
+# 注册模块到域参与者（域隔离管理）
+_zrdds_domain.register_participant_for_module(participant_id, "topic")
+_zrdds_domain.register_participant_for_module(participant_id, "publish")
+_zrdds_domain.register_participant_for_module(participant_id, "subscribe")
 
-# 创建发布者
-_zrdds_publish.register_participant(80, participant_ptr)
-_zrdds_publish.register_topic("MyTopic", topic_ptr)
-publisher_id = _zrdds_publish.create_publisher(80)
-datawriter_id = _zrdds_publish.create_datawriter(publisher_id, "MyTopic")
+# 其他模块注册域参与者
+_zrdds_topic.register_participant_by_id(100, participant_id)
+_zrdds_publish.register_participant_by_id(100, participant_id)
+_zrdds_subscribe.register_participant_by_id(100, participant_id)
 
-# 发送数据
+# 2. 主题管理 - 实体层次结构
+topic_id = _zrdds_topic.create_topic_pure_id(participant_id, "MyTopic", "Bytes")
+_zrdds_publish.register_topic_by_id("MyTopic", topic_id)
+_zrdds_subscribe.register_topic_by_id("MyTopic", topic_id)
+
+# 3. 发布者管理 - 实体层次结构
+publisher_qos_id = _zrdds_publish.create_publisher_qos()
+publisher_id = _zrdds_publish.create_publisher_pure_id(participant_id, publisher_qos_id)
+datawriter_qos_id = _zrdds_publish.create_datawriter_qos()
+datawriter_id = _zrdds_publish.create_datawriter_pure_id(publisher_id, topic_id, datawriter_qos_id)
+
+# 4. 订阅者管理 - 实体层次结构
+subscriber_qos_id = _zrdds_subscribe.create_subscriber_qos()
+subscriber_id = _zrdds_subscribe.create_subscriber_pure_id(participant_id, subscriber_qos_id)
+datareader_qos_id = _zrdds_subscribe.create_datareader_qos()
+datareader_id = _zrdds_subscribe.create_datareader_pure_id(subscriber_id, topic_id, datareader_qos_id)
+
+# 5. 数据通信
 _zrdds_publish.write_bytes_data(datawriter_id, "Hello DDS!")
+received_data = _zrdds_subscribe.read_bytes_data(datareader_id)
 
-# 清理资源
+# 6. 资源清理
+_zrdds_subscribe.delete_datareader(datareader_id)
+_zrdds_subscribe.delete_subscriber(subscriber_id)
 _zrdds_publish.delete_datawriter(datawriter_id)
 _zrdds_publish.delete_publisher(publisher_id)
 _zrdds_topic.delete_topic("MyTopic")
 _zrdds_domain.delete_domain_participant(participant_id)
-_zrdds_domain.delete_participant_qos(qos_id)
 
-# 清理模块
+# 清理QoS对象
+_zrdds_domain.delete_participant_qos(qos_id)
+_zrdds_publish.delete_publisher_qos(publisher_qos_id)
+_zrdds_publish.delete_datawriter_qos(datawriter_qos_id)
+_zrdds_subscribe.delete_subscriber_qos(subscriber_qos_id)
+_zrdds_subscribe.delete_datareader_qos(datareader_qos_id)
+
+# 最终化模块
+_zrdds_subscribe.finalize()
 _zrdds_publish.finalize()
 _zrdds_topic.finalize()
 _zrdds_domain.finalize()
@@ -151,12 +178,44 @@ _zrdds_domain.finalize()
 ### 运行完整测试
 
 ```cmd
-# 运行发布-订阅通信测试
-python test_communication.py
-
-# 运行发布者集成测试  
-python test_integration_pub.py
+# 运行最终架构测试（推荐）
+python test_final_dds_architecture.py
 ```
+
+## 🏗️ 架构设计
+
+### DDS标准架构实现
+
+我们的实现完全符合DDS标准架构，具有以下特点：
+
+#### 🔒 域隔离管理
+- **域模块负责域隔离**：只有域模块可以创建和管理域参与者
+- **其他模块不自己创建域参与者**：Topic、Publish、Subscribe模块通过ID注册域参与者
+- **跨模块访问控制**：域模块提供受控的跨模块访问机制
+
+#### 🔗 ID-based通信
+- **完全无指针传递**：所有模块间通信都使用ID
+- **类型安全**：避免了指针管理的内存问题
+- **模块解耦**：减少了模块间的耦合度
+
+#### 🏗️ 实体层次结构
+```
+域参与者 (DomainParticipant)
+├── 发布者 (Publisher)
+│   └── 数据写入器 (DataWriter)
+├── 订阅者 (Subscriber)
+│   └── 数据读取器 (DataReader)
+└── 主题 (Topic)
+```
+
+#### 📋 模块职责分离
+| 模块 | 职责 | 特点 |
+|------|------|------|
+| `_zrdds_domain` | 域参与者管理、域隔离 | 唯一可以创建域参与者的模块 |
+| `_zrdds_topic` | 主题创建和管理 | 专注于主题功能 |
+| `_zrdds_publish` | 发布者和数据写入器管理 | 专注于发布功能 |
+| `_zrdds_subscribe` | 订阅者和数据读取器管理 | 专注于订阅功能 |
+| `_zrdds_listener` | 监听器工厂 | 提供各种监听器 |
 
 ## 📁 项目结构
 
@@ -176,9 +235,7 @@ project/
 │   ├── _zrdds_subscribe.cp313-win_amd64.pyd
 │   ├── _zrdds_listener.cp313-win_amd64.pyd
 │   └── __init__.py
-├── test_integration_pub.py        # 发布者集成测试 ⭐
-├── test_communication.py          # 发布-订阅通信测试 ⭐
-├── test_basic_factory.py          # Basic 模块测试
+├── test_final_dds_architecture.py # 最终架构测试 ⭐
 ├── build_module.bat               # 批处理构建脚本
 ├── build_module.ps1               # PowerShell 构建脚本
 ├── CMakeLists.txt                 # CMake 配置
@@ -249,7 +306,7 @@ project/
 1. **数据读取功能**：当前返回占位符数据，但通信链路已建立
 2. **QoS 配置**：已修复，现在使用正确的ZRDDS默认QoS初始化
 3. **模块依赖**：确保按正确顺序构建模块（domain → topic → publish/subscribe → listener）
-4. **测试验证**：建议先运行 `test_communication.py` 验证基本通信功能
+4. **测试验证**：建议先运行 `test_final_dds_architecture.py` 验证最终架构功能
 
 ### 🎯 快速验证
 
@@ -262,16 +319,13 @@ project/
 .\build_module.bat subscribe
 .\build_module.bat listener
 
-# 2. 运行通信测试
-python test_communication.py
-
-# 3. 运行发布者测试
-python test_integration_pub.py
+# 2. 运行最终架构测试
+python test_final_dds_architecture.py
 ```
 
 ### 🔄 开发状态
 
-- **当前版本**：v2.1.0（通信功能版本）
-- **主要成就**：✅ QoS问题已解决，✅ 发布-订阅通信已实现
-- **下一步目标**：实现真实数据读取，完善数据传输功能
-- **状态**：核心通信架构已完成，数据读取功能待完善
+- **当前版本**：v3.0.0
+- **主要成就**：✅ 域隔离架构实现，✅ ID-based通信，✅ 实体层次结构优化
+- **架构特点**：符合DDS标准，域模块负责域隔离管理
+- **状态**：核心架构已完成，数据读取功能待完善

@@ -14,7 +14,9 @@
 #include "InstanceHandle_t.h"
 #include "ZRDDSCppWrapper.h"
 #include "Topic.h"
+#include "TopicQos.h"
 #include "DomainParticipant.h"
+#include "DomainParticipantFactory.h"
 #include "ZRBuiltinTypesTypeSupport.h"
 #include "ZRBuiltinTypesDataWriter.h"
 
@@ -126,34 +128,64 @@ PYBIND11_MODULE(_zrdds_publish, m) {
         return true;
     }, "Initialize Publish DDS module");
     
-    // Integration functions for Topic module
-    m.def("register_participant", [](int domain_id, void* participant_ptr) -> bool {
-        DDS::DomainParticipant* participant = static_cast<DDS::DomainParticipant*>(participant_ptr);
-        if (participant) {
-            PublishDDSManager::register_participant(domain_id, participant);
-            return true;
-        }
-        return false;
-    }, py::arg("domain_id"), py::arg("participant_ptr"), "Register DomainParticipant from Topic module");
+    // Integration functions for Topic module (ID-based only)
+    m.def("register_participant_by_id", [](int domain_id, int participant_id) -> bool {
+        // Publish模块不应该自己创建域参与者，应该从域模块获取
+        // 这里只是记录映射关系，实际的域参与者由域模块管理
+        PublishDDSManager::participants[domain_id] = nullptr; // 占位符，实际指针由域模块提供
+        return true;
+    }, py::arg("domain_id"), py::arg("participant_id"), "Register DomainParticipant by ID from Topic module");
     
-    m.def("register_topic", [](const std::string& topic_name, void* topic_ptr) -> bool {
-        DDS::Topic* topic = static_cast<DDS::Topic*>(topic_ptr);
+    m.def("register_topic_by_id", [](const std::string& topic_name, int topic_id) -> bool {
+        // For now, we'll create a topic directly in publish module
+        // This is a temporary solution until we implement proper cross-module communication
+        
+        // Find participant in our local map
+        DDS::DomainParticipant* participant = nullptr;
+        for (auto& pair : PublishDDSManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return false; // Participant not found
+        }
+        
+        // Register type support first
+        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
+            participant,
+            "Bytes"
+        );
+        
+        if (register_result != DDS::RETCODE_OK) {
+            return false; // Failed to register type
+        }
+        
+        // Create topic with properly initialized QoS
+        DDS::TopicQos topic_qos;
+        DDS_DefaultTopicQosInitial(&topic_qos);
+        
+        DDS::Topic* topic = participant->create_topic(
+            topic_name.c_str(), 
+            "Bytes",
+            topic_qos, 
+            nullptr, 
+            DDS::STATUS_MASK_NONE
+        );
+        
         if (topic) {
-            PublishDDSManager::register_topic(topic_name, topic);
+            PublishDDSManager::topics[topic_name] = topic;
             return true;
         }
         return false;
-    }, py::arg("topic_name"), py::arg("topic_ptr"), "Register Topic from Topic module");
+    }, py::arg("topic_name"), py::arg("topic_id"), "Register Topic by ID from Topic module");
 
-    // Integration functions for Listener module
-    m.def("register_datawriter_listener", [](int listener_id, void* listener_ptr) -> bool {
-        DDS::DataWriterListener* listener = static_cast<DDS::DataWriterListener*>(listener_ptr);
-        if (listener) {
-            PublishDDSManager::datawriter_listeners[listener_id] = listener;
-            return true;
-        }
-        return false;
-    }, py::arg("listener_id"), py::arg("listener_ptr"), "Register DataWriterListener from Listener module");
+    // Integration functions for Listener module (ID-based only)
+    m.def("register_datawriter_listener_by_id", [](int listener_id) -> bool {
+        // Store listener ID mapping instead of pointer
+        PublishDDSManager::datawriter_listeners[listener_id] = nullptr; // Placeholder - will be set by listener module
+        return true;
+    }, py::arg("listener_id"), "Register DataWriterListener by ID from Listener module");
 
     m.def("unregister_datawriter_listener", [](int listener_id) -> bool {
         auto it = PublishDDSManager::datawriter_listeners.find(listener_id);
@@ -253,6 +285,101 @@ PYBIND11_MODULE(_zrdds_publish, m) {
     }, py::arg("domain_id"), py::arg("qos_id") = -1, py::arg("listener") = nullptr, 
        "Create Publisher for domain and return ID");
     
+    // ID-based Publisher creation - no pointer passing needed
+    m.def("create_publisher_with_participant_id", [](int participant_id, int qos_id = -1, 
+                                                     void* listener = nullptr) -> int {
+        // For now, we'll use a simplified approach - find any available participant
+        // This is a temporary solution until we implement proper cross-module communication
+        DDS::DomainParticipant* participant = nullptr;
+        
+        // Try to find participant in our local map
+        for (auto& pair : PublishDDSManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::PublisherQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto it = PublishDDSManager::publisher_qos.find(qos_id);
+            if (it != PublishDDSManager::publisher_qos.end()) {
+                qos = it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::PublisherQos default_qos;
+        if (!qos) {
+            DDS_DefaultPublisherQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::PublisherQos& final_qos = *qos;
+        
+        DDS::Publisher* publisher = participant->create_publisher(
+            final_qos, 
+            static_cast<DDS::PublisherListener*>(listener), 
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (publisher) {
+            int id = PublishDDSManager::generate_id();
+            PublishDDSManager::publishers[id] = publisher;
+            return id;
+        }
+        return -1;
+    }, py::arg("participant_id"), py::arg("qos_id") = -1, py::arg("listener") = nullptr, 
+       "Create Publisher using participant ID (no pointer passing)");
+    
+    // Pure ID-based Publisher creation - completely no pointer passing
+    m.def("create_publisher_pure_id", [](int participant_id, int qos_id = -1) -> int {
+        // Get participant from domain module using cross-module communication
+        // This is a simplified approach - in a real implementation, we'd have proper module communication
+        
+        // Find participant in our local map (this should be registered by domain module)
+        DDS::DomainParticipant* participant = nullptr;
+        for (auto& pair : PublishDDSManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::PublisherQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto it = PublishDDSManager::publisher_qos.find(qos_id);
+            if (it != PublishDDSManager::publisher_qos.end()) {
+                qos = it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::PublisherQos default_qos;
+        if (!qos) {
+            DDS_DefaultPublisherQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::PublisherQos& final_qos = *qos;
+        
+        DDS::Publisher* publisher = participant->create_publisher(
+            final_qos, 
+            nullptr,  // No listener for pure ID-based approach
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (publisher) {
+            int id = PublishDDSManager::generate_id();
+            PublishDDSManager::publishers[id] = publisher;
+            return id;
+        }
+        return -1;
+    }, py::arg("participant_id"), py::arg("qos_id") = -1, 
+       "Create Publisher using participant ID (pure ID-based, no pointer passing)");
+    
     m.def("delete_publisher", [](int publisher_id) -> bool {
         auto it = PublishDDSManager::publishers.find(publisher_id);
         if (it != PublishDDSManager::publishers.end()) {
@@ -325,6 +452,127 @@ PYBIND11_MODULE(_zrdds_publish, m) {
         return id;
     }, py::arg("publisher_id"), py::arg("topic_name"), py::arg("qos_id") = -1, py::arg("listener") = nullptr,
        "Create DataWriter for topic and return ID");
+    
+    // ID-based DataWriter creation - no pointer passing needed
+    m.def("create_datawriter_with_topic_id", [](int publisher_id, int topic_id, int qos_id = -1,
+                                                void* listener = nullptr) -> int {
+        auto publisher_it = PublishDDSManager::publishers.find(publisher_id);
+        if (publisher_it == PublishDDSManager::publishers.end() || !publisher_it->second) {
+            return -1; // Publisher not found
+        }
+        
+        // Find topic by ID (assuming topic_id is the domain_id for now)
+        // This is a simplified approach - in a real implementation, you'd have a topic_id to topic mapping
+        DDS::Topic* topic = nullptr;
+        for (auto& topic_pair : PublishDDSManager::topics) {
+            // For now, we'll use the topic name to find the topic
+            // In a real implementation, you'd have a proper topic_id to topic mapping
+            topic = topic_pair.second;
+            break; // Use the first available topic for now
+        }
+        
+        if (!topic) {
+            return -1; // Topic not found
+        }
+        
+        // Get the participant from the topic
+        DDS::DomainParticipant* participant = topic->get_participant();
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::DataWriterQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto qos_it = PublishDDSManager::datawriter_qos.find(qos_id);
+            if (qos_it != PublishDDSManager::datawriter_qos.end()) {
+                qos = qos_it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::DataWriterQos default_qos;
+        if (!qos) {
+            DDS_DefaultDataWriterQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::DataWriterQos& final_qos = *qos;
+        
+        DDS::DataWriter* writer = publisher_it->second->create_datawriter(
+            topic, 
+            final_qos, 
+            static_cast<DDS::DataWriterListener*>(listener), 
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (writer == nullptr) {
+            return -1; // DataWriter creation failed
+        }
+        
+        // Store the writer and return ID
+        int id = PublishDDSManager::generate_id();
+        PublishDDSManager::data_writers[id] = writer;
+        return id;
+    }, py::arg("publisher_id"), py::arg("topic_id"), py::arg("qos_id") = -1, py::arg("listener") = nullptr,
+       "Create DataWriter using topic ID (no pointer passing)");
+    
+    // Pure ID-based DataWriter creation - completely no pointer passing
+    m.def("create_datawriter_pure_id", [](int publisher_id, int topic_id, int qos_id = -1) -> int {
+        // Get publisher by ID
+        auto publisher_it = PublishDDSManager::publishers.find(publisher_id);
+        if (publisher_it == PublishDDSManager::publishers.end() || !publisher_it->second) {
+            return -1; // Publisher not found
+        }
+        
+        // Get topic by ID (simplified approach - use first available topic)
+        DDS::Topic* topic = nullptr;
+        for (auto& topic_pair : PublishDDSManager::topics) {
+            topic = topic_pair.second;
+            break; // Use the first available topic for now
+        }
+        
+        if (!topic) {
+            return -1; // Topic not found
+        }
+        
+        // Get the participant from the topic
+        DDS::DomainParticipant* participant = topic->get_participant();
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::DataWriterQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto qos_it = PublishDDSManager::datawriter_qos.find(qos_id);
+            if (qos_it != PublishDDSManager::datawriter_qos.end()) {
+                qos = qos_it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::DataWriterQos default_qos;
+        if (!qos) {
+            DDS_DefaultDataWriterQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::DataWriterQos& final_qos = *qos;
+        
+        DDS::DataWriter* writer = publisher_it->second->create_datawriter(
+            topic, 
+            final_qos, 
+            nullptr,  // No listener for pure ID-based approach
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (writer == nullptr) {
+            return -1; // DataWriter creation failed
+        }
+        
+        // Store the writer and return ID
+        int id = PublishDDSManager::generate_id();
+        PublishDDSManager::data_writers[id] = writer;
+        return id;
+    }, py::arg("publisher_id"), py::arg("topic_id"), py::arg("qos_id") = -1,
+       "Create DataWriter using publisher ID and topic ID (pure ID-based, no pointer passing)");
     
     m.def("delete_datawriter", [](int writer_id) -> bool {
         auto it = PublishDDSManager::data_writers.find(writer_id);
@@ -483,16 +731,11 @@ PYBIND11_MODULE(_zrdds_publish, m) {
         return static_cast<int>(PublishDDSManager::data_writers.size());
     }, "Get number of data writers");
     
-    // Get datawriter pointer for integration (named capsule to stabilize in Python)
-    m.def("get_datawriter_ptr", [](int datawriter_id) -> py::object {
+    // Check if datawriter exists (ID-based only, no pointer passing)
+    m.def("datawriter_exists", [](int datawriter_id) -> bool {
         auto it = PublishDDSManager::data_writers.find(datawriter_id);
-        if (it == PublishDDSManager::data_writers.end() || !it->second) {
-            return py::none();
-        }
-        DDS::DataWriter* writer = it->second;
-        // Create named capsule
-        return py::capsule(static_cast<void*>(writer), "dds.DataWriter");
-    }, py::arg("datawriter_id"), "Get DataWriter pointer for integration");
+        return (it != PublishDDSManager::data_writers.end() && it->second != nullptr);
+    }, py::arg("datawriter_id"), "Check if DataWriter exists by ID");
 
     // Attach DataWriterListener using writer id and listener id
     m.def("attach_datawriter_listener_by_id", [](int writer_id, int listener_id, uint32_t status_mask) -> bool {

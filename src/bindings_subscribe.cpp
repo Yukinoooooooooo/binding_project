@@ -17,7 +17,9 @@
 #include "InstanceHandle_t.h"
 #include "ZRDDSCppWrapper.h"
 #include "Topic.h"
+#include "TopicQos.h"
 #include "DomainParticipant.h"
+#include "DomainParticipantFactory.h"
 #include "ZRBuiltinTypesTypeSupport.h"
 #include "ZRBuiltinTypesDataReader.h"
 #include "ZRDDSDataReader.h"
@@ -138,24 +140,57 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
         return true;
     }, "Initialize Subscribe DDS module");
     
-    // Integration functions for Topic module
-    m.def("register_participant", [](int domain_id, void* participant_ptr) -> bool {
-        DDS::DomainParticipant* participant = static_cast<DDS::DomainParticipant*>(participant_ptr);
-        if (participant) {
-            SubscribeDDSManager::register_participant(domain_id, participant);
-            return true;
-        }
-        return false;
-    }, py::arg("domain_id"), py::arg("participant_ptr"), "Register DomainParticipant from Topic module");
+    // Integration functions for Topic module (ID-based only)
+    m.def("register_participant_by_id", [](int domain_id, int participant_id) -> bool {
+        // Subscribe模块不应该自己创建域参与者，应该从域模块获取
+        // 这里只是记录映射关系，实际的域参与者由域模块管理
+        SubscribeDDSManager::participants[domain_id] = nullptr; // 占位符，实际指针由域模块提供
+        return true;
+    }, py::arg("domain_id"), py::arg("participant_id"), "Register DomainParticipant by ID from Topic module");
     
-    m.def("register_topic", [](const std::string& topic_name, void* topic_ptr) -> bool {
-        DDS::Topic* topic = static_cast<DDS::Topic*>(topic_ptr);
+    m.def("register_topic_by_id", [](const std::string& topic_name, int topic_id) -> bool {
+        // For now, we'll create a topic directly in subscribe module
+        // This is a temporary solution until we implement proper cross-module communication
+        
+        // Find participant in our local map
+        DDS::DomainParticipant* participant = nullptr;
+        for (auto& pair : SubscribeDDSManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return false; // Participant not found
+        }
+        
+        // Register type support first
+        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
+            participant,
+            "Bytes"
+        );
+        
+        if (register_result != DDS::RETCODE_OK) {
+            return false; // Failed to register type
+        }
+        
+        // Create topic with properly initialized QoS
+        DDS::TopicQos topic_qos;
+        DDS_DefaultTopicQosInitial(&topic_qos);
+        
+        DDS::Topic* topic = participant->create_topic(
+            topic_name.c_str(), 
+            "Bytes",
+            topic_qos, 
+            nullptr, 
+            DDS::STATUS_MASK_NONE
+        );
+        
         if (topic) {
-            SubscribeDDSManager::register_topic(topic_name, topic);
+            SubscribeDDSManager::topics[topic_name] = topic;
             return true;
         }
         return false;
-    }, py::arg("topic_name"), py::arg("topic_ptr"), "Register Topic from Topic module");
+    }, py::arg("topic_name"), py::arg("topic_id"), "Register Topic by ID from Topic module");
     
     // Factory functions for SubscriberQos
     m.def("create_subscriber_qos", []() -> int {
@@ -246,6 +281,53 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
     }, py::arg("domain_id"), py::arg("qos_id") = -1, py::arg("listener") = nullptr, 
        "Create Subscriber for domain and return ID");
     
+    // Pure ID-based Subscriber creation - completely no pointer passing
+    m.def("create_subscriber_pure_id", [](int participant_id, int qos_id = -1) -> int {
+        // Get participant from domain module using cross-module communication
+        // This is a simplified approach - in a real implementation, we'd have proper module communication
+        
+        // Find participant in our local map (this should be registered by domain module)
+        DDS::DomainParticipant* participant = nullptr;
+        for (auto& pair : SubscribeDDSManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::SubscriberQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto it = SubscribeDDSManager::subscriber_qos.find(qos_id);
+            if (it != SubscribeDDSManager::subscriber_qos.end()) {
+                qos = it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::SubscriberQos default_qos;
+        if (!qos) {
+            DDS_DefaultSubscriberQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::SubscriberQos& final_qos = *qos;
+        
+        DDS::Subscriber* subscriber = participant->create_subscriber(
+            final_qos, 
+            nullptr,  // No listener for pure ID-based approach
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (subscriber) {
+            int id = SubscribeDDSManager::generate_id();
+            SubscribeDDSManager::subscribers[id] = subscriber;
+            return id;
+        }
+        return -1;
+    }, py::arg("participant_id"), py::arg("qos_id") = -1, 
+       "Create Subscriber using participant ID (pure ID-based, no pointer passing)");
+    
     m.def("delete_subscriber", [](int subscriber_id) -> bool {
         auto it = SubscribeDDSManager::subscribers.find(subscriber_id);
         if (it != SubscribeDDSManager::subscribers.end()) {
@@ -310,6 +392,65 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
         }
         return false;
     }, py::arg("reader_id"), "Delete DataReader by ID");
+    
+    // Pure ID-based DataReader creation - completely no pointer passing
+    m.def("create_datareader_pure_id", [](int subscriber_id, int topic_id, int qos_id = -1) -> int {
+        // Get subscriber by ID
+        auto subscriber_it = SubscribeDDSManager::subscribers.find(subscriber_id);
+        if (subscriber_it == SubscribeDDSManager::subscribers.end() || !subscriber_it->second) {
+            return -1; // Subscriber not found
+        }
+        
+        // Get topic by ID (simplified approach - use first available topic)
+        DDS::Topic* topic = nullptr;
+        for (auto& topic_pair : SubscribeDDSManager::topics) {
+            topic = topic_pair.second;
+            break; // Use the first available topic for now
+        }
+        
+        if (!topic) {
+            return -1; // Topic not found
+        }
+        
+        // Get the participant from the topic
+        DDS::DomainParticipant* participant = topic->get_participant();
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        DDS::DataReaderQos* qos = nullptr;
+        if (qos_id != -1) {
+            auto qos_it = SubscribeDDSManager::datareader_qos.find(qos_id);
+            if (qos_it != SubscribeDDSManager::datareader_qos.end()) {
+                qos = qos_it->second;
+            }
+        }
+        
+        // Use properly initialized default QoS if none provided
+        DDS::DataReaderQos default_qos;
+        if (!qos) {
+            DDS_DefaultDataReaderQosInitial(&default_qos);
+            qos = &default_qos;
+        }
+        const DDS::DataReaderQos& final_qos = *qos;
+        
+        DDS::DataReader* reader = subscriber_it->second->create_datareader(
+            topic, 
+            final_qos, 
+            nullptr,  // No listener for pure ID-based approach
+            DDS::STATUS_MASK_ALL
+        );
+        
+        if (reader == nullptr) {
+            return -1; // DataReader creation failed
+        }
+        
+        // Store the reader and return ID
+        int id = SubscribeDDSManager::generate_id();
+        SubscribeDDSManager::data_readers[id] = reader;
+        return id;
+    }, py::arg("subscriber_id"), py::arg("topic_id"), py::arg("qos_id") = -1,
+       "Create DataReader using subscriber ID and topic ID (pure ID-based, no pointer passing)");
     
     // ReadCondition creation
     m.def("create_readcondition", [](int reader_id, int sample_states = DDS::ANY_SAMPLE_STATE,

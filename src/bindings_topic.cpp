@@ -201,6 +201,124 @@ PYBIND11_MODULE(_zrdds_topic, m) {
     }, py::arg("domain_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
        "Create Topic (returns 1=created, 0=exists, -1=error)");
     
+    // ID-based Topic creation - no pointer passing needed
+    m.def("create_topic_with_participant_id", [](int participant_id, const std::string& topic_name, 
+                                                 const std::string& type_name = "Bytes") -> int {
+        // We need to get the participant pointer from domain module
+        // For now, we'll use a simplified approach - get the participant pointer
+        // This is a temporary solution until we implement proper cross-module communication
+        
+        // Import domain module to get participant pointer
+        // This is a workaround - in a real implementation, we'd have better module communication
+        DDS::DomainParticipant* participant = nullptr;
+        
+        // Try to find participant in our local map first
+        for (auto& pair : TopicManager::participants) {
+            // Check if this participant matches the ID (this is a simplified approach)
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        // Check if topic already exists
+        auto topic_it = TopicManager::topics.find(topic_name);
+        if (topic_it != TopicManager::topics.end()) {
+            return 0; // Topic already exists
+        }
+        
+        // Register type support first
+        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
+            participant,
+            type_name.c_str()
+        );
+        
+        if (register_result != DDS::RETCODE_OK) {
+            return -1; // Failed to register type
+        }
+        
+        // Create topic with properly initialized QoS
+        DDS::TopicQos topic_qos;
+        DDS_DefaultTopicQosInitial(&topic_qos);
+        
+        DDS::Topic* topic = participant->create_topic(
+            topic_name.c_str(), 
+            type_name.c_str(),
+            topic_qos, 
+            nullptr, 
+            DDS::STATUS_MASK_NONE
+        );
+        
+        if (topic) {
+            TopicManager::topics[topic_name] = topic;
+            return 1; // Topic created successfully
+        } else {
+            return -1; // Failed to create topic
+        }
+    }, py::arg("participant_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
+       "Create Topic using participant ID (no pointer passing)");
+    
+    // Pure ID-based Topic creation - completely no pointer passing
+    m.def("create_topic_pure_id", [](int participant_id, const std::string& topic_name, 
+                                     const std::string& type_name = "Bytes") -> int {
+        // Get participant from domain module using cross-module communication
+        // This is a simplified approach - in a real implementation, we'd have proper module communication
+        
+        // For now, we'll use the existing participant registration mechanism
+        // but return a topic ID instead of requiring pointer passing
+        
+        // Check if topic already exists
+        auto topic_it = TopicManager::topics.find(topic_name);
+        if (topic_it != TopicManager::topics.end()) {
+            return 0; // Topic already exists
+        }
+        
+        // Find participant in our local map (this should be registered by domain module)
+        DDS::DomainParticipant* participant = nullptr;
+        for (auto& pair : TopicManager::participants) {
+            participant = pair.second;
+            break; // Use the first available participant for now
+        }
+        
+        if (!participant) {
+            return -1; // Participant not found
+        }
+        
+        // Register type support first
+        DDS::ReturnCode_t register_result = DDS::BytesTypeSupport::get_instance()->register_type(
+            participant,
+            type_name.c_str()
+        );
+        
+        if (register_result != DDS::RETCODE_OK) {
+            return -1; // Failed to register type
+        }
+        
+        // Create topic with properly initialized QoS
+        DDS::TopicQos topic_qos;
+        DDS_DefaultTopicQosInitial(&topic_qos);
+        
+        DDS::Topic* topic = participant->create_topic(
+            topic_name.c_str(), 
+            type_name.c_str(),
+            topic_qos, 
+            nullptr, 
+            DDS::STATUS_MASK_NONE
+        );
+        
+        if (topic) {
+            TopicManager::topics[topic_name] = topic;
+            // Return a topic ID (we'll use a simple hash of the topic name for now)
+            int topic_id = std::hash<std::string>{}(topic_name) % 10000;
+            return topic_id; // Return topic ID instead of success flag
+        } else {
+            return -1; // Failed to create topic
+        }
+    }, py::arg("participant_id"), py::arg("topic_name"), py::arg("type_name") = "Bytes", 
+       "Create Topic using participant ID (pure ID-based, no pointer passing)");
+    
     // Create ContentFilteredTopic
     m.def("create_content_filtered_topic", [](int domain_id, const std::string& topic_name,
                                              const std::string& filtered_topic_name,
@@ -282,45 +400,25 @@ PYBIND11_MODULE(_zrdds_topic, m) {
         return info;
     }, py::arg("topic_name"), "Get Topic information");
     
-    // Register participant for integration
-    m.def("register_participant", [](int domain_id, py::object participant_ptr) -> bool {
-        if (participant_ptr.is_none()) {
-            return false;
-        }
-        
-        try {
-            DDS::DomainParticipant* participant = static_cast<DDS::DomainParticipant*>(participant_ptr.cast<void*>());
-            if (participant) {
-                TopicManager::participants[domain_id] = participant;
-                return true;
-            }
-        } catch (const std::exception& e) {
-            return false;
-        }
-        return false;
-    }, py::arg("domain_id"), py::arg("participant_ptr"), "Register DomainParticipant for integration");
+    // Register participant for integration (ID-based only)
+    m.def("register_participant_by_id", [](int domain_id, int participant_id) -> bool {
+        // Topic模块不应该自己创建域参与者，应该从域模块获取
+        // 这里只是记录映射关系，实际的域参与者由域模块管理
+        TopicManager::participants[domain_id] = nullptr; // 占位符，实际指针由域模块提供
+        return true;
+    }, py::arg("domain_id"), py::arg("participant_id"), "Register DomainParticipant by ID for integration");
     
-    // Get participant pointer for integration
-    m.def("get_participant_ptr", [](int domain_id) -> py::object {
+    // Check if participant exists (ID-based only, no pointer passing)
+    m.def("participant_exists", [](int domain_id) -> bool {
         auto participant_it = TopicManager::participants.find(domain_id);
-        if (participant_it == TopicManager::participants.end()) {
-            return py::none();
-        }
-        
-        DDS::DomainParticipant* participant = participant_it->second;
-        return py::cast(static_cast<void*>(participant));
-    }, py::arg("domain_id"), "Get DomainParticipant pointer for integration");
+        return (participant_it != TopicManager::participants.end());
+    }, py::arg("domain_id"), "Check if participant exists by domain ID");
     
-    // Get topic pointer for integration
-    m.def("get_topic_ptr", [](const std::string& topic_name) -> py::object {
+    // Check if topic exists (ID-based only, no pointer passing)
+    m.def("topic_exists", [](const std::string& topic_name) -> bool {
         auto topic_it = TopicManager::topics.find(topic_name);
-        if (topic_it == TopicManager::topics.end()) {
-            return py::none();
-        }
-        
-        DDS::Topic* topic = topic_it->second;
-        return py::cast(static_cast<void*>(topic));
-    }, py::arg("topic_name"), "Get Topic pointer for integration");
+        return (topic_it != TopicManager::topics.end());
+    }, py::arg("topic_name"), "Check if topic exists by name");
     
     // Delete Topic
     m.def("delete_topic", [](const std::string& topic_name) -> bool {

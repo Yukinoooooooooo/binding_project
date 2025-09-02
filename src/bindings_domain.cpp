@@ -20,6 +20,7 @@ struct DomainDDSManager {
     static std::map<int, DDS::DomainParticipant*> participants;
     static std::map<int, DDS::DomainParticipantQos*> participant_qos;
     static DDS::DomainParticipantFactory* factory;
+    static std::map<std::string, int> module_registrations;  // Module name -> participant ID mapping
     
     static int next_id;
     
@@ -65,6 +66,7 @@ struct DomainDDSManager {
 std::map<int, DDS::DomainParticipant*> DomainDDSManager::participants;
 std::map<int, DDS::DomainParticipantQos*> DomainDDSManager::participant_qos;
 DDS::DomainParticipantFactory* DomainDDSManager::factory = nullptr;
+std::map<std::string, int> DomainDDSManager::module_registrations;
 int DomainDDSManager::next_id = 6000;
 
 // Domain module wrapper
@@ -213,6 +215,34 @@ PYBIND11_MODULE(_zrdds_domain, m) {
         return false;
     }, py::arg("participant_id"), py::arg("qos_id"), "Set DomainParticipant QoS");
     
+    // Cross-module access functions for pure ID-based communication
+    m.def("get_participant_by_id", [](int participant_id) -> py::object {
+        auto it = DomainDDSManager::participants.find(participant_id);
+        if (it != DomainDDSManager::participants.end() && it->second) {
+            // Return participant ID for cross-module communication
+            return py::cast(participant_id);
+        }
+        return py::none();
+    }, py::arg("participant_id"), "Get participant by ID for cross-module communication");
+    
+    m.def("register_participant_for_module", [](int participant_id, const std::string& module_name) -> bool {
+        auto it = DomainDDSManager::participants.find(participant_id);
+        if (it != DomainDDSManager::participants.end() && it->second) {
+            // Store module registration info
+            DomainDDSManager::module_registrations[module_name] = participant_id;
+            return true;
+        }
+        return false;
+    }, py::arg("participant_id"), py::arg("module_name"), "Register participant for specific module");
+    
+    m.def("get_registered_participant_id", [](const std::string& module_name) -> int {
+        auto it = DomainDDSManager::module_registrations.find(module_name);
+        if (it != DomainDDSManager::module_registrations.end()) {
+            return it->second;
+        }
+        return -1;
+    }, py::arg("module_name"), "Get registered participant ID for module");
+    
     // Factory operations
     m.def("get_factory_instance", []() -> bool {
         DDS::DomainParticipantFactory* factory = DomainDDSManager::get_factory();
@@ -266,14 +296,24 @@ PYBIND11_MODULE(_zrdds_domain, m) {
         return static_cast<int>(DomainDDSManager::participant_qos.size());
     }, "Get number of participant QoS objects");
     
-    // Get participant pointer for integration
-    m.def("get_participant_ptr", [](int participant_id) -> py::object {
+    // Check if participant exists (ID-based only, no pointer passing)
+    m.def("participant_exists", [](int participant_id) -> bool {
+        auto it = DomainDDSManager::participants.find(participant_id);
+        return (it != DomainDDSManager::participants.end() && it->second != nullptr);
+    }, py::arg("participant_id"), "Check if participant exists by ID");
+    
+    // Domain isolation management: provide participant access for other modules (internal use)
+    m.def("get_participant_for_module", [](int participant_id, const std::string& module_name) -> py::object {
         auto it = DomainDDSManager::participants.find(participant_id);
         if (it != DomainDDSManager::participants.end() && it->second) {
-            return py::cast(static_cast<void*>(it->second));
+            // Verify module is registered
+            auto reg_it = DomainDDSManager::module_registrations.find(module_name);
+            if (reg_it != DomainDDSManager::module_registrations.end() && reg_it->second == participant_id) {
+                return py::cast(static_cast<void*>(it->second));
+            }
         }
         return py::none();
-    }, py::arg("participant_id"), "Get DomainParticipant pointer for integration");
+    }, py::arg("participant_id"), py::arg("module_name"), "Get participant pointer for registered module (domain isolation)");
     
     // Cleanup function
     m.def("finalize", []() {
