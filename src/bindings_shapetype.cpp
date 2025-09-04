@@ -57,9 +57,6 @@ PYBIND11_MODULE(_zrdds_shapetype, m) {
             return "<DDS.SampleInfo(valid_data=" + std::to_string(self.valid_data) + ")>";
         });
     
-    // Note: ShapeTypeSeq and SampleInfoSeq are used internally by DataReader methods
-    // They don't need to be exposed to Python directly
-    
     // Bind ShapeTypeTypeSupport class
     py::class_<ShapeTypeTypeSupport, std::unique_ptr<ShapeTypeTypeSupport, py::nodelete>>(m, "ShapeTypeTypeSupport")
         .def_static("get_instance", []() -> ShapeTypeTypeSupport* {

@@ -33,9 +33,6 @@
 
 namespace py = pybind11;
 
-// Note: Publish module provides class bindings only
-// Users should create and manage publishers/datawriters through DomainParticipant methods
-
 // Publish module wrapper
 PYBIND11_MODULE(_zrdds_publish, m) {
     m.doc() = "ZRDDS Python Wrapper - Publish Module (Complete Interface)";

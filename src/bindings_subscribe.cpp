@@ -306,9 +306,6 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
         return true;
     }, "Initialize Subscribe DDS module");
     
-    // Note: Subscribe module provides class bindings only
-    // Users should create and manage subscribers/datareaders through DomainParticipant methods
-    
     // Cleanup function
     m.def("finalize", []() {
         return true;

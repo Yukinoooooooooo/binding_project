@@ -25,9 +25,6 @@
 
 namespace py = pybind11;
 
-// Note: Listener module provides class bindings only
-// Users should create and manage listeners through entity methods
-
 // Listener module wrapper
 PYBIND11_MODULE(_zrdds_listener, m) {
     m.doc() = "ZRDDS Python Wrapper - Listener Module (Complete Interface)";

@@ -43,10 +43,7 @@ namespace py = pybind11;
 // Domain module wrapper
 PYBIND11_MODULE(_zrdds_domain, m) {
     m.doc() = "ZRDDS Python Wrapper - Domain Module (Complete Interface)";
-    
-    // ReturnCode_t enum is now defined in _zrdds_basic module
-    // No need to duplicate enum registration here
-    
+       
     // Bind StatusKindMask constants (it's a typedef, not an enum)
     // 明确转换为 Python int 类型，避免类型不匹配
     m.attr("STATUS_MASK_NONE") = py::int_(static_cast<int>(DDS::STATUS_MASK_NONE));
