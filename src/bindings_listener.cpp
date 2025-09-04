@@ -12,261 +12,185 @@
 #include "SubscriberListener.h"
 #include "TopicListener.h"
 #include "Listener.h"
-#include "Entity.h"
 #include "ReturnCode_t.h"
 #include "StatusKindMask.h"
-#include "ZRDDSCppWrapper.h"
 #include "DataReader.h"
 #include "DataWriter.h"
 #include "DomainParticipant.h"
 #include "Publisher.h"
 #include "Subscriber.h"
 #include "Topic.h"
+#include "SampleInfo.h"
+#include "ZRDDSCppWrapper.h"
 
 namespace py = pybind11;
 
-// Simple Listener DDS Manager - like your simple DDS module
-struct ListenerDDSManager {
-    static DDS::DataReaderListener* datareader_listener;
-    static DDS::DataWriterListener* datawriter_listener;
-    static DDS::DomainParticipantListener* participant_listener;
-    static DDS::PublisherListener* publisher_listener;
-    static DDS::SubscriberListener* subscriber_listener;
-    static DDS::TopicListener* topic_listener;
-    
-    static void cleanup() {
-        if (datareader_listener) {
-            delete datareader_listener;
-            datareader_listener = nullptr;
-        }
-        if (datawriter_listener) {
-            delete datawriter_listener;
-            datawriter_listener = nullptr;
-        }
-        if (participant_listener) {
-            delete participant_listener;
-            participant_listener = nullptr;
-        }
-        if (publisher_listener) {
-            delete publisher_listener;
-            publisher_listener = nullptr;
-        }
-        if (subscriber_listener) {
-            delete subscriber_listener;
-            subscriber_listener = nullptr;
-        }
-        if (topic_listener) {
-            delete topic_listener;
-            topic_listener = nullptr;
-        }
-    }
-};
-
-// Initialize static members
-DDS::DataReaderListener* ListenerDDSManager::datareader_listener = nullptr;
-DDS::DataWriterListener* ListenerDDSManager::datawriter_listener = nullptr;
-DDS::DomainParticipantListener* ListenerDDSManager::participant_listener = nullptr;
-DDS::PublisherListener* ListenerDDSManager::publisher_listener = nullptr;
-DDS::SubscriberListener* ListenerDDSManager::subscriber_listener = nullptr;
-DDS::TopicListener* ListenerDDSManager::topic_listener = nullptr;
+// Note: Listener module provides class bindings only
+// Users should create and manage listeners through entity methods
 
 // Listener module wrapper
 PYBIND11_MODULE(_zrdds_listener, m) {
-    m.doc() = "ZRDDS Python Wrapper - Listener Module (Simple Direct Interface)";
+    m.doc() = "ZRDDS Python Wrapper - Listener Module (Complete Interface)";
     
-    // Basic functions
-    m.def("hello", []() {
-        return "Hello from ZRDDS Listener Module - Simple Direct Interface!";
-    });
+    // Bind Listener base class
+    py::class_<DDS::Listener>(m, "Listener")
+        .def("__repr__", [](const DDS::Listener& self) {
+            return "<DDS.Listener>";
+        });
     
-    m.def("get_version", []() {
-        return "ZRDDS Listener Module v3.0.0 - Simple Direct Implementation";
-    });
+    // Bind DataReaderListener class
+    py::class_<DDS::DataReaderListener, DDS::Listener>(m, "DataReaderListener")
+        .def(py::init<>())
+        .def("on_requested_deadline_missed", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::RequestedDeadlineMissedStatus& status) {
+            self.on_requested_deadline_missed(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_REQUESTED_DEADLINE_MISSED_STATUS")
+        .def("on_data_available", [](DDS::DataReaderListener& self, DDS::DataReader* reader) {
+            self.on_data_available(reader);
+        }, py::arg("reader"), "Callback when new samples are stored in the data reader")
+        .def("on_data_arrived", [](DDS::DataReaderListener& self, DDS::DataReader* reader, void* sample, const DDS::SampleInfo& info) {
+            self.on_data_arrived(reader, sample, info);
+        }, py::arg("reader"), py::arg("sample"), py::arg("info"), "Direct notification of data arrival, suitable for best-effort scenarios that don't require data reader caching")
+        .def("on_sample_rejected", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::SampleRejectedStatus& status) {
+            self.on_sample_rejected(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_SAMPLE_REJECTED_STATUS")
+        .def("on_liveliness_changed", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::LivelinessChangedStatus& status) {
+            self.on_liveliness_changed(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_LIVELINESS_LOST_STATUS")
+        .def("on_requested_incompatible_qos", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::RequestedIncompatibleQosStatus& status) {
+            self.on_requested_incompatible_qos(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_REQUESTED_INCOMPATIBLE_QOS_STATUS")
+        .def("on_subscription_matched", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::SubscriptionMatchedStatus& status) {
+            self.on_subscription_matched(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_SUBSCRIPTION_MATCHED_STATUS")
+        .def("on_sample_lost", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::SampleLostStatus& status) {
+            self.on_sample_lost(reader, status);
+        }, py::arg("reader"), py::arg("status"), "Callback interface for DDS_SAMPLE_LOST_STATUS")
+        .def("__repr__", [](const DDS::DataReaderListener& self) {
+            return "<DDS.DataReaderListener>";
+        });
+    
+    // Bind DataWriterListener class
+    py::class_<DDS::DataWriterListener, DDS::Listener>(m, "DataWriterListener")
+        .def(py::init<>())
+        .def("on_liveliness_lost", [](DDS::DataWriterListener& self, DDS::DataWriter* writer, const DDS::LivelinessLostStatus& status) {
+            self.on_liveliness_lost(writer, status);
+        }, py::arg("writer"), py::arg("status"), "Callback interface for DDS_LIVELINESS_LOST_STATUS")
+        .def("on_offered_deadline_missed", [](DDS::DataWriterListener& self, DDS::DataWriter* writer, const DDS::OfferedDeadlineMissedStatus& status) {
+            self.on_offered_deadline_missed(writer, status);
+        }, py::arg("writer"), py::arg("status"), "Callback interface for DDS_OFFERED_DEADLINE_MISSED_STATUS")
+        .def("on_offered_incompatible_qos", [](DDS::DataWriterListener& self, DDS::DataWriter* writer, const DDS::OfferedIncompatibleQosStatus& status) {
+            self.on_offered_incompatible_qos(writer, status);
+        }, py::arg("writer"), py::arg("status"), "Callback interface for DDS_OFFERED_INCOMPATIBLE_QOS_STATUS")
+        .def("on_publication_matched", [](DDS::DataWriterListener& self, DDS::DataWriter* writer, const DDS::PublicationMatchedStatus& status) {
+            self.on_publication_matched(writer, status);
+        }, py::arg("writer"), py::arg("status"), "Callback interface for DDS_PUBLICATION_MATCHED_STATUS")
+        .def("__repr__", [](const DDS::DataWriterListener& self) {
+            return "<DDS.DataWriterListener>";
+        });
+    
+    // Bind DomainParticipantListener class
+    py::class_<DDS::DomainParticipantListener>(m, "DomainParticipantListener")
+        .def(py::init<>())
+        .def("on_domain_received", [](DDS::DomainParticipantListener& self, DDS::ULong domainId) {
+            self.on_domain_received(domainId);
+        }, py::arg("domainId"), "Callback for RTPX protocol processing, see DDS_DomainParticipantQos::domain_destination_addresses")
+        .def("__repr__", [](const DDS::DomainParticipantListener& self) {
+            return "<DDS.DomainParticipantListener>";
+        });
+    
+    // Bind PublisherListener class
+    py::class_<DDS::PublisherListener, DDS::Listener>(m, "PublisherListener")
+        .def(py::init<>())
+        .def("__repr__", [](const DDS::PublisherListener& self) {
+            return "<DDS.PublisherListener>";
+        });
+    
+    // Bind SubscriberListener class
+    py::class_<DDS::SubscriberListener, DDS::Listener>(m, "SubscriberListener")
+        .def(py::init<>())
+        .def("on_data_on_readers", [](DDS::SubscriberListener& self, DDS::Subscriber* subscriber) {
+            self.on_data_on_readers(subscriber);
+        }, py::arg("subscriber"), "Callback for DDS_DATA_ON_READERS_STATUS")
+        .def("__repr__", [](const DDS::SubscriberListener& self) {
+            return "<DDS.SubscriberListener>";
+        });
+    
+    // Bind TopicListener class
+    py::class_<DDS::TopicListener, DDS::Listener>(m, "TopicListener")
+        .def(py::init<>())
+        .def("on_inconsistent_topic", [](DDS::TopicListener& self, DDS::Topic* topic, const DDS::InconsistentTopicStatus& status) {
+            self.on_inconsistent_topic(topic, status);
+        }, py::arg("topic"), py::arg("status"), "Callback interface for DDS_INCONSISTENT_TOPIC_STATUS")
+        .def("__repr__", [](const DDS::TopicListener& self) {
+            return "<DDS.TopicListener>";
+        });
     
     // Initialize listener module
     m.def("init", []() {
-        ListenerDDSManager::cleanup();
         return true;
     }, "Initialize Listener DDS module");
     
-    // Create DataReaderListener - direct creation
-    m.def("create_datareader_listener", []() -> bool {
-        if (ListenerDDSManager::datareader_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple DataReaderListener
-        ListenerDDSManager::datareader_listener = new DDS::DataReaderListener();
-        return (ListenerDDSManager::datareader_listener != nullptr);
-    }, "Create DataReaderListener");
-    
-    m.def("delete_datareader_listener", []() -> bool {
-        if (ListenerDDSManager::datareader_listener) {
-            delete ListenerDDSManager::datareader_listener;
-            ListenerDDSManager::datareader_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete DataReaderListener");
-    
-    // Create DataWriterListener - direct creation
-    m.def("create_datawriter_listener", []() -> bool {
-        if (ListenerDDSManager::datawriter_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple DataWriterListener
-        ListenerDDSManager::datawriter_listener = new DDS::DataWriterListener();
-        return (ListenerDDSManager::datawriter_listener != nullptr);
-    }, "Create DataWriterListener");
-    
-    m.def("delete_datawriter_listener", []() -> bool {
-        if (ListenerDDSManager::datawriter_listener) {
-            delete ListenerDDSManager::datawriter_listener;
-            ListenerDDSManager::datawriter_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete DataWriterListener");
-    
-    // Create DomainParticipantListener - direct creation
-    m.def("create_participant_listener", []() -> bool {
-        if (ListenerDDSManager::participant_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple DomainParticipantListener
-        ListenerDDSManager::participant_listener = new DDS::DomainParticipantListener();
-        return (ListenerDDSManager::participant_listener != nullptr);
-    }, "Create DomainParticipantListener");
-    
-    m.def("delete_participant_listener", []() -> bool {
-        if (ListenerDDSManager::participant_listener) {
-            delete ListenerDDSManager::participant_listener;
-            ListenerDDSManager::participant_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete DomainParticipantListener");
-    
-    // Create PublisherListener - direct creation
-    m.def("create_publisher_listener", []() -> bool {
-        if (ListenerDDSManager::publisher_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple PublisherListener
-        ListenerDDSManager::publisher_listener = new DDS::PublisherListener();
-        return (ListenerDDSManager::publisher_listener != nullptr);
-    }, "Create PublisherListener");
-    
-    m.def("delete_publisher_listener", []() -> bool {
-        if (ListenerDDSManager::publisher_listener) {
-            delete ListenerDDSManager::publisher_listener;
-            ListenerDDSManager::publisher_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete PublisherListener");
-    
-    // Create SubscriberListener - direct creation
-    m.def("create_subscriber_listener", []() -> bool {
-        if (ListenerDDSManager::subscriber_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple SubscriberListener
-        ListenerDDSManager::subscriber_listener = new DDS::SubscriberListener();
-        return (ListenerDDSManager::subscriber_listener != nullptr);
-    }, "Create SubscriberListener");
-    
-    m.def("delete_subscriber_listener", []() -> bool {
-        if (ListenerDDSManager::subscriber_listener) {
-            delete ListenerDDSManager::subscriber_listener;
-            ListenerDDSManager::subscriber_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete SubscriberListener");
-    
-    // Create TopicListener - direct creation
-    m.def("create_topic_listener", []() -> bool {
-        if (ListenerDDSManager::topic_listener) {
-            return true; // Already exists
-        }
-        
-        // Create a simple TopicListener
-        ListenerDDSManager::topic_listener = new DDS::TopicListener();
-        return (ListenerDDSManager::topic_listener != nullptr);
-    }, "Create TopicListener");
-    
-    m.def("delete_topic_listener", []() -> bool {
-        if (ListenerDDSManager::topic_listener) {
-            delete ListenerDDSManager::topic_listener;
-            ListenerDDSManager::topic_listener = nullptr;
-            return true;
-        }
-        return false;
-    }, "Delete TopicListener");
-    
-    // Check if entities exist
-    m.def("datareader_listener_exists", []() -> bool {
-        return (ListenerDDSManager::datareader_listener != nullptr);
-    }, "Check if datareader listener exists");
-    
-    m.def("datawriter_listener_exists", []() -> bool {
-        return (ListenerDDSManager::datawriter_listener != nullptr);
-    }, "Check if datawriter listener exists");
-    
-    m.def("participant_listener_exists", []() -> bool {
-        return (ListenerDDSManager::participant_listener != nullptr);
-    }, "Check if participant listener exists");
-    
-    m.def("publisher_listener_exists", []() -> bool {
-        return (ListenerDDSManager::publisher_listener != nullptr);
-    }, "Check if publisher listener exists");
-    
-    m.def("subscriber_listener_exists", []() -> bool {
-        return (ListenerDDSManager::subscriber_listener != nullptr);
-    }, "Check if subscriber listener exists");
-    
-    m.def("topic_listener_exists", []() -> bool {
-        return (ListenerDDSManager::topic_listener != nullptr);
-    }, "Check if topic listener exists");
+    // Note: Listener module provides class bindings only
+    // Users should create and manage listeners through entity methods
     
     // Cleanup function
     m.def("finalize", []() {
-        ListenerDDSManager::cleanup();
         return true;
     }, "Cleanup Listener DDS module");
     
     // API info
     m.def("get_api_info", []() {
         py::dict info;
-        info["message"] = "ZRDDS Listener Module - Simple Direct Interface";
-        info["datareader_listener_exists"] = (ListenerDDSManager::datareader_listener != nullptr);
-        info["datawriter_listener_exists"] = (ListenerDDSManager::datawriter_listener != nullptr);
-        info["participant_listener_exists"] = (ListenerDDSManager::participant_listener != nullptr);
-        info["publisher_listener_exists"] = (ListenerDDSManager::publisher_listener != nullptr);
-        info["subscriber_listener_exists"] = (ListenerDDSManager::subscriber_listener != nullptr);
-        info["topic_listener_exists"] = (ListenerDDSManager::topic_listener != nullptr);
+        info["message"] = "ZRDDS Listener Module - Complete Interface";
+        
+        py::list classes;
+        classes.append(py::str("Listener"));
+        classes.append(py::str("DataReaderListener"));
+        classes.append(py::str("DataWriterListener"));
+        classes.append(py::str("DomainParticipantListener"));
+        classes.append(py::str("PublisherListener"));
+        classes.append(py::str("SubscriberListener"));
+        classes.append(py::str("TopicListener"));
+        info["classes"] = classes;
         
         py::list functions;
         functions.append(py::str("init"));
-        functions.append(py::str("create_datareader_listener"));
-        functions.append(py::str("delete_datareader_listener"));
-        functions.append(py::str("create_datawriter_listener"));
-        functions.append(py::str("delete_datawriter_listener"));
-        functions.append(py::str("create_participant_listener"));
-        functions.append(py::str("delete_participant_listener"));
-        functions.append(py::str("create_publisher_listener"));
-        functions.append(py::str("delete_publisher_listener"));
-        functions.append(py::str("create_subscriber_listener"));
-        functions.append(py::str("delete_subscriber_listener"));
-        functions.append(py::str("create_topic_listener"));
-        functions.append(py::str("delete_topic_listener"));
         functions.append(py::str("finalize"));
         info["main_functions"] = functions;
+        
+        py::dict methods;
+        
+        py::list dataReaderMethods;
+        dataReaderMethods.append(py::str("on_requested_deadline_missed"));
+        dataReaderMethods.append(py::str("on_data_available"));
+        dataReaderMethods.append(py::str("on_data_arrived"));
+        dataReaderMethods.append(py::str("on_sample_rejected"));
+        dataReaderMethods.append(py::str("on_liveliness_changed"));
+        dataReaderMethods.append(py::str("on_requested_incompatible_qos"));
+        dataReaderMethods.append(py::str("on_subscription_matched"));
+        dataReaderMethods.append(py::str("on_sample_lost"));
+        methods["DataReaderListener"] = dataReaderMethods;
+        
+        py::list dataWriterMethods;
+        dataWriterMethods.append(py::str("on_liveliness_lost"));
+        dataWriterMethods.append(py::str("on_offered_deadline_missed"));
+        dataWriterMethods.append(py::str("on_offered_incompatible_qos"));
+        dataWriterMethods.append(py::str("on_publication_matched"));
+        methods["DataWriterListener"] = dataWriterMethods;
+        
+        py::list domainParticipantMethods;
+        domainParticipantMethods.append(py::str("on_domain_received"));
+        methods["DomainParticipantListener"] = domainParticipantMethods;
+        
+        py::list subscriberMethods;
+        subscriberMethods.append(py::str("on_data_on_readers"));
+        methods["SubscriberListener"] = subscriberMethods;
+        
+        py::list topicMethods;
+        topicMethods.append(py::str("on_inconsistent_topic"));
+        methods["TopicListener"] = topicMethods;
+        info["listener_methods"] = methods;
+        
         return info;
     });
 }

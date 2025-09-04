@@ -2,7 +2,7 @@
 #define ShapeType_H_
 
 /*************************************************************/
-/*           ´ËÎÄ¼þÓÉ±àÒëÆ÷Éú³É£¬ÇëÎðËæÒâÐÞ¸Ä                */
+/*           ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½É±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½                */
 /*************************************************************/
 #include "OsResource.h"
 #include "ZRSequence.h"
@@ -20,14 +20,14 @@ extern "C"
 
 typedef struct ShapeType
 {
-    DDS_Long x; // @ID(0) @Key
-    DDS_Long y; // @ID(1)
-    DDS_Char* z; // @ID(2) /* maximum length = (255) */
-} ShapeType; // @Extensibility(EXTENSIBLE)
+    DDS_Long x; 
+    DDS_Long y; 
+    DDS_Char* z; 
+} ShapeType; 
 
 DDS_USER_SEQUENCE_CPP(ShapeTypeSeq, ShapeType);
 
-// ÓÃ»§Ê¹ÓÃ½Ó¿Ú
+
 DDS_Boolean ShapeTypeInitialize(
     ShapeType* self);
 
@@ -58,7 +58,7 @@ void ShapeTypePrintData(
 
 DDS::TypeCode* ShapeTypeGetTypeCode();
 
-// µ×²ãÊ¹ÓÃº¯Êý
+
 ShapeType* ShapeTypeCreateSample(
     ZRMemPool* pool,
     DDS_Boolean allocMutable);

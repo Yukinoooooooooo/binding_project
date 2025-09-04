@@ -1,6 +1,4 @@
-/*************************************************************/
-/*           此文件由编译器生成，请勿随意修改                */
-/*************************************************************/
+
 #include "ZRMemPool.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -210,10 +208,10 @@ void ShapeTypePrintData(const ShapeType *sample)
         printf("NULL\n");
         return;
     }
-    printf("sample->x: %d\n", sample->x); // 只在 VS 下有效
+    printf("sample->x: %d\n", sample->x); 
     printf("\n");
 
-    printf("sample->y: %d\n", sample->y); // 只在 VS 下有效
+    printf("sample->y: %d\n", sample->y); 
     printf("\n");
 
     if (sample->z != NULL)
