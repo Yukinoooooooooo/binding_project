@@ -188,9 +188,6 @@ PYBIND11_MODULE(_zrdds_basic, m) {
         return true;
     }, "Initialize Basic DDS module");
     
-    // Note: Basic module provides class bindings only
-    // Users should create and manage basic DDS entities through appropriate methods
-    
     // Cleanup function
     m.def("finalize", []() {
         return true;

@@ -33,9 +33,23 @@ PYBIND11_MODULE(_zrdds_shapetype, m) {
         .def(py::init<>())
         .def_readwrite("x", &ShapeType::x)
         .def_readwrite("y", &ShapeType::y)
-        .def_readwrite("z", &ShapeType::z)
+        .def_property("z", 
+            [](const ShapeType& self) -> std::string {
+                return self.z ? std::string(self.z) : std::string("");
+            },
+            [](ShapeType& self, const std::string& value) {
+                // 释放旧的内存
+                if (self.z) {
+                    free(self.z);
+                }
+                // 分配新内存并复制字符串
+                self.z = (DDS_Char*)malloc(value.length() + 1);
+                if (self.z) {
+                    strcpy(self.z, value.c_str());
+                }
+            })
         .def("__repr__", [](const ShapeType& self) {
-            return "<ShapeType(x=" + std::to_string(self.x) + ", y=" + std::to_string(self.y) + ", z='" + std::string(self.z) + "')>";
+            return "<ShapeType(x=" + std::to_string(self.x) + ", y=" + std::to_string(self.y) + ", z='" + (self.z ? std::string(self.z) : std::string("")) + "')>";
         });
     
     // Bind SampleInfo class

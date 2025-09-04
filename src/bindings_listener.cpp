@@ -25,6 +25,81 @@
 
 namespace py = pybind11;
 
+// Trampoline class for DataReaderListener
+class PyDataReaderListener : public DDS::DataReaderListener {
+public:
+    using DDS::DataReaderListener::DataReaderListener;
+
+    void on_data_available(DDS::DataReader* reader) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_data_available,
+            reader
+        );
+    }
+
+    void on_requested_deadline_missed(DDS::DataReader* reader, const DDS::RequestedDeadlineMissedStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_requested_deadline_missed,
+            reader,
+            status
+        );
+    }
+
+    void on_sample_rejected(DDS::DataReader* reader, const DDS::SampleRejectedStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_sample_rejected,
+            reader,
+            status
+        );
+    }
+
+    void on_liveliness_changed(DDS::DataReader* reader, const DDS::LivelinessChangedStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_liveliness_changed,
+            reader,
+            status
+        );
+    }
+
+    void on_requested_incompatible_qos(DDS::DataReader* reader, const DDS::RequestedIncompatibleQosStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_requested_incompatible_qos,
+            reader,
+            status
+        );
+    }
+
+    void on_subscription_matched(DDS::DataReader* reader, const DDS::SubscriptionMatchedStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_subscription_matched,
+            reader,
+            status
+        );
+    }
+
+    void on_sample_lost(DDS::DataReader* reader, const DDS::SampleLostStatus& status) override {
+        PYBIND11_OVERRIDE(
+            void,
+            DDS::DataReaderListener,
+            on_sample_lost,
+            reader,
+            status
+        );
+    }
+};
+
 // Listener module wrapper
 PYBIND11_MODULE(_zrdds_listener, m) {
     m.doc() = "ZRDDS Python Wrapper - Listener Module (Complete Interface)";
@@ -35,8 +110,8 @@ PYBIND11_MODULE(_zrdds_listener, m) {
             return "<DDS.Listener>";
         });
     
-    // Bind DataReaderListener class
-    py::class_<DDS::DataReaderListener, DDS::Listener>(m, "DataReaderListener")
+    // Bind DataReaderListener class with trampoline
+    py::class_<DDS::DataReaderListener, PyDataReaderListener, DDS::Listener>(m, "DataReaderListener")
         .def(py::init<>())
         .def("on_requested_deadline_missed", [](DDS::DataReaderListener& self, DDS::DataReader* reader, const DDS::RequestedDeadlineMissedStatus& status) {
             self.on_requested_deadline_missed(reader, status);
