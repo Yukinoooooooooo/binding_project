@@ -136,3 +136,18 @@ datareader = subscriber.create_datareader(topic, datareader_qos, None, 0)
    python shape_subscriber.py
    ```
 
+## 💬 聊天应用
+
+### 实时双向聊天
+基于 DDS 监听器模式实现的实时聊天应用：
+
+```bash
+# 启动两个聊天实例
+python simple_chat.py  # 终端1，输入用户名
+python simple_chat.py  # 终端2，输入用户名
+```
+
+### 相关文档
+- [聊天实现总结](CHAT_IMPLEMENTATION_SUMMARY.md) - 完整的技术实现总结
+- [聊天使用指南](CHAT_README.md) - 详细的使用说明
+
