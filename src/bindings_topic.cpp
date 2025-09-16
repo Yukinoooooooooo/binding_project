@@ -11,7 +11,6 @@
 #include "ContentFilteredTopic.h"
 #include "MultiTopic.h"
 #include "TypeSupport.h"
-#include "DomainEntity.h"
 #include "DomainParticipant.h"
 #include "ReturnCode_t.h"
 #include "TopicQos.h"
@@ -27,7 +26,7 @@ namespace py = pybind11;
 
 // Topic module wrapper
 PYBIND11_MODULE(_zrdds_topic, m) {
-    m.doc() = "ZRDDS Python Wrapper - Topic Module (Complete Interface)";
+    m.doc() = "ZRDDS Python Wrapper - Topic Module";
     
     // Bind TopicDescription class with nodelete policy (protected destructor)
     py::class_<DDS::TopicDescription, std::unique_ptr<DDS::TopicDescription, py::nodelete>>(m, "TopicDescription")
@@ -130,7 +129,7 @@ PYBIND11_MODULE(_zrdds_topic, m) {
         
         // 创建Topic 
         DDS::TopicQos topic_qos;
-        DDS_DefaultTopicQosInitial(&topic_qos);  // 使用初始化函数
+        // 使用默认QoS，不需要特殊初始化
         
         DDS::Topic* topic = dp->create_topic(
             topic_name.c_str(),           // "DATARECEIVEBYLISTENER"
@@ -148,11 +147,36 @@ PYBIND11_MODULE(_zrdds_topic, m) {
     }, "Create topic", py::arg("participant"), py::arg("topic_name"), py::arg("type_name"), py::arg("qos"), py::arg("listener"), py::arg("mask"));
     
     // Delete topic
-    m.def("delete_topic", [](py::object topic) -> bool {
-        // 这里需要实现删除逻辑
-        // 暂时返回成功
-        return true;
-    }, "Delete topic", py::arg("topic"));
+    m.def("delete_topic", [](py::object topic, py::object participant) -> py::tuple {
+        // 从Python对象获取C++ Topic指针
+        DDS::Topic* topic_ptr = topic.cast<DDS::Topic*>();
+        if (topic_ptr == nullptr) {
+            return py::make_tuple(false, DDS::RETCODE_BAD_PARAMETER, "Invalid topic pointer");
+        }
+        
+        // 从Python对象获取C++ DomainParticipant指针
+        DDS::DomainParticipant* dp = participant.cast<DDS::DomainParticipant*>();
+        if (dp == nullptr) {
+            return py::make_tuple(false, DDS::RETCODE_BAD_PARAMETER, "Invalid participant pointer");
+        }
+        
+        // 调用DomainParticipant的delete_topic方法
+        DDS::ReturnCode_t ret = dp->delete_topic(topic_ptr);
+        
+        if (ret == DDS::RETCODE_OK) {
+            return py::make_tuple(true, ret, "Topic deleted successfully");
+        } else {
+            std::string error_msg;
+            if (ret == DDS::RETCODE_BAD_PARAMETER) {
+                error_msg = "Invalid topic parameter or topic not created by this participant";
+            } else if (ret == DDS::RETCODE_PRECONDITION_NOT_MET) {
+                error_msg = "Topic cannot be deleted - it may have dependent entities (DataWriters, DataReaders, ContentFilteredTopics)";
+            } else {
+                error_msg = "Unknown error occurred during topic deletion";
+            }
+            return py::make_tuple(false, ret, error_msg);
+        }
+    }, "Delete topic", py::arg("topic"), py::arg("participant"));
     
     // API info
     m.def("get_api_info", []() {

@@ -87,8 +87,6 @@ PYBIND11_MODULE(_zrdds_basic, m) {
             return "<DDS.GuardCondition>";
         });
     
-
-    
     // Bind WaitSet class with nodelete policy (protected destructor)
     py::class_<DDS::WaitSet, std::unique_ptr<DDS::WaitSet, py::nodelete>>(m, "WaitSet")
         .def(py::init<>(), "Create WaitSet")
@@ -137,10 +135,6 @@ PYBIND11_MODULE(_zrdds_basic, m) {
         });
     
     // Constants - 暂时只定义最基本的常量
-    // 注意：STATUS_MASK_NONE 和 STATUS_MASK_ALL 已在 domain 模块中定义，这里不再重复
-    // m.attr("STATUS_MASK_NONE") = DDS_STATUS_MASK_NONE;
-    // m.attr("STATUS_MASK_ALL") = DDS_STATUS_MASK_ALL;
-    
     // 使用 py::enum_ 来绑定枚举常量 - 这是更推荐的方式
     py::enum_<DDS_ReturnCode_t>(m, "ReturnCode")
         .value("RETCODE_OK", DDS_RETCODE_OK)

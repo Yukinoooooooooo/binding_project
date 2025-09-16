@@ -116,12 +116,7 @@ PYBIND11_MODULE(_zrdds_subscribe, m) {
             return "<DDS.Subscriber>";
         });
     
-    // Bind DataReaderQos class - 补充缺失的类绑定
-    py::class_<DDS::DataReaderQos>(m, "DataReaderQos")
-        .def(py::init<>())
-        .def("__repr__", [](const DDS::DataReaderQos& self) {
-            return "<DDS.DataReaderQos>";
-        });
+    // DataReaderQos class is bound in bindings_domain.cpp to avoid duplicate registration
     
     // Bind DataReader class with nodelete policy (protected destructor)
     py::class_<DDS::DataReader, DDS::DomainEntity, std::unique_ptr<DDS::DataReader, py::nodelete>>(m, "DataReader")

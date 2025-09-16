@@ -16,7 +16,7 @@
 #include "Subscriber.h"
 #include "DataWriter.h"
 #include "DataReader.h"
-#include "Duration_t.h"  // 添加这个头文件，因为Time_t是Duration_t的typedef
+#include "Duration_t.h" 
 #include "ZRSequence.h"
 #include "SampleInfo.h"
 
@@ -25,8 +25,6 @@ namespace py = pybind11;
 // ShapeType module wrapper
 PYBIND11_MODULE(_zrdds_shapetype, m) {
     m.doc() = "ZRDDS Python Wrapper - ShapeType Module";
-    
-    // 注意：Duration_t在basic模块中定义，这里不需要创建别名
     
     // Bind ShapeType struct
     py::class_<ShapeType>(m, "ShapeType")

@@ -103,12 +103,7 @@ PYBIND11_MODULE(_zrdds_publish, m) {
             return "<DDS.Publisher>";
         });
     
-    // Bind DataWriterQos class - 补充缺失的类绑定
-    py::class_<DDS::DataWriterQos>(m, "DataWriterQos")
-        .def(py::init<>())
-        .def("__repr__", [](const DDS::DataWriterQos& self) {
-            return "<DDS.DataWriterQos>";
-        });
+    // DataWriterQos class is bound in bindings_domain.cpp to avoid duplicate registration
     
     // Bind DataWriter class
     py::class_<DDS::DataWriter, DDS::DomainEntity, std::unique_ptr<DDS::DataWriter, py::nodelete>>(m, "DataWriter")
