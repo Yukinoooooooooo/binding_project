@@ -76,7 +76,7 @@ class ChatListener(listener.DataReaderListener):
                             # 处理用户上线，不转发为普通消息
                             if self.dds_manager:
                                 self.dds_manager.check_and_handle_user_join(self.topic_name, sender_id, actual_message)
-                                # 当有新用户上线时，向该用户发送我们的在线状态
+                                # 当有新用户上线时，向该用户发送我们的在线状态（避免循环）
                                 self.dds_manager.send_user_discovery_message(self.topic_name)
                         elif sender_name == "DISCOVERY":
                             print(f"[调试] 收到用户发现消息: {actual_message}")
@@ -84,6 +84,8 @@ class ChatListener(listener.DataReaderListener):
                             if self.dds_manager:
                                 # DISCOVERY消息也用于处理用户加入，确保用户可见
                                 self.dds_manager.check_and_handle_user_join(self.topic_name, sender_id, actual_message)
+                                # 收到发现消息时，发送我们的在线状态（避免循环）
+                                self.dds_manager.send_online_message(self.topic_name)
                         elif sender_name == "OFFLINE":
                             print(f"[调试] 收到离线消息: {actual_message}")
                             # 处理用户离线，不转发为普通消息
@@ -149,6 +151,7 @@ class DDSChatManager:
         self.online_users = {}  # 存储每个主题的在线用户 {topic: {username}}
         self.discovered_topics = set()  # 存储发现的主题
         self.topic_creators = {}  # 存储主题创建者 {topic: username}
+        self.last_message_time = {}  # 存储每个主题的最后消息时间，用于防循环
         
     def initialize_dds(self):
         """初始化DDS系统"""
@@ -236,6 +239,13 @@ class DDSChatManager:
     def send_online_message(self, topic):
         """发送上线消息"""
         try:
+            # 防循环机制：检查是否在最近1秒内发送过消息
+            current_time = time.time()
+            if topic in self.last_message_time:
+                if current_time - self.last_message_time[topic] < 1.0:
+                    print(f"[调试] 防循环：跳过发送上线消息到 {topic}")
+                    return
+            
             send_data = shapetype.ShapeType()
             send_data.x = self.user_id
             send_data.y = 888  # 特殊标识，表示上线消息
@@ -244,6 +254,7 @@ class DDSChatManager:
             writer = self.writers.get(topic)
             if writer:
                 writer.write(send_data, domain.HANDLE_NIL_NATIVE)
+                self.last_message_time[topic] = current_time
                 print(f"[调试] 发送上线消息: {topic} - {self.username}")
         except Exception as e:
             print(f"[错误] 发送上线消息失败: {e}")
@@ -251,6 +262,13 @@ class DDSChatManager:
     def send_user_discovery_message(self, topic):
         """发送用户发现消息，让新用户知道我们在线"""
         try:
+            # 防循环机制：检查是否在最近1秒内发送过消息
+            current_time = time.time()
+            if topic in self.last_message_time:
+                if current_time - self.last_message_time[topic] < 1.0:
+                    print(f"[调试] 防循环：跳过发送发现消息到 {topic}")
+                    return
+            
             send_data = shapetype.ShapeType()
             send_data.x = self.user_id
             send_data.y = 889  # 特殊标识，表示用户发现消息
@@ -259,6 +277,7 @@ class DDSChatManager:
             writer = self.writers.get(topic)
             if writer:
                 writer.write(send_data, domain.HANDLE_NIL_NATIVE)
+                self.last_message_time[topic] = current_time
                 print(f"[调试] 发送用户发现消息: {topic} - {self.username}")
         except Exception as e:
             print(f"[错误] 发送用户发现消息失败: {e}")

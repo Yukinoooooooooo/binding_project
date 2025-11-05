@@ -6,7 +6,7 @@ import re
 import json
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QMouseEvent, QColor, QPen, QFont, QIcon, QPainter, QBrush, QLinearGradient
+from PySide6.QtGui import QMouseEvent, QColor, QPen, QFont, QIcon, QPainter, QBrush, QLinearGradient, QPalette
 from PySide6.QtWidgets import (
     QApplication, QGraphicsScene, QGraphicsView, QGraphicsLineItem, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel, QColorDialog, QFrame,
@@ -44,10 +44,12 @@ def safe_str(s):
 
 class ModernButton(QPushButton):
     """现代化按钮样式"""
-    def __init__(self, text, icon_text=None, button_type="primary"):
+    def __init__(self, text, icon_text=None, button_type="primary", is_dark_theme=False):
         super().__init__(text)
         self.button_type = button_type
         self.icon_text = icon_text
+        # 固定使用白色主题
+        self.is_dark_theme = False
         self.setup_style()
         
     def setup_style(self):
@@ -63,13 +65,13 @@ class ModernButton(QPushButton):
         self.setMinimumHeight(40)
         self.setMinimumWidth(100)
         
-        # 根据按钮类型设置样式
+        # 固定白色主题按钮样式
         if self.button_type == "primary":
             self.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #4A90E2, stop:1 #357ABD);
-                    border: 2px solid #357ABD;
+                        stop:0 #007BFF, stop:1 #0056B3);
+                    border: 2px solid #0056B3;
                     border-radius: 8px;
                     color: white;
                     padding: 8px 16px;
@@ -77,26 +79,26 @@ class ModernButton(QPushButton):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #5BA0F2, stop:1 #468ACD);
-                    border: 2px solid #468ACD;
+                        stop:0 #0056B3, stop:1 #004085);
+                    border: 2px solid #004085;
                 }
                 QPushButton:pressed {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #357ABD, stop:1 #2A6A9D);
-                    border: 2px solid #2A6A9D;
+                        stop:0 #004085, stop:1 #002752);
+                    border: 2px solid #002752;
                 }
                 QPushButton:checked {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #E74C3C, stop:1 #C0392B);
-                    border: 2px solid #C0392B;
+                        stop:0 #DC3545, stop:1 #C82333);
+                    border: 2px solid #C82333;
                 }
             """)
         elif self.button_type == "secondary":
             self.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #95A5A6, stop:1 #7F8C8D);
-                    border: 2px solid #7F8C8D;
+                        stop:0 #6C757D, stop:1 #5A6268);
+                    border: 2px solid #5A6268;
                     border-radius: 8px;
                     color: white;
                     padding: 8px 16px;
@@ -104,13 +106,18 @@ class ModernButton(QPushButton):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #A5B5B6, stop:1 #8F9C9D);
-                    border: 2px solid #8F9C9D;
+                        stop:0 #5A6268, stop:1 #495057);
+                    border: 2px solid #495057;
                 }
                 QPushButton:pressed {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #7F8C8D, stop:1 #6A7B7C);
-                    border: 2px solid #6A7B7C;
+                        stop:0 #495057, stop:1 #343A40);
+                    border: 2px solid #343A40;
+                }
+                QPushButton:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #DC3545, stop:1 #C82333);
+                    border: 2px solid #C82333;
                 }
             """)
         elif self.button_type == "success":
@@ -222,10 +229,12 @@ class ModernSlider(QSlider):
 
 
 class DoodleBoard(QWidget):
-    def __init__(self, dds_manager, self_name):
+    def __init__(self, dds_manager, self_name, is_dark_theme=False):
         super().__init__()
         self.dds_manager = dds_manager
         self.self_name = self_name
+        # 固定使用白色主题
+        self.is_dark_theme = False
 
         # 画板参数
         self.current_color = QColor(Qt.black)
@@ -274,7 +283,9 @@ class DoodleBoard(QWidget):
         font.setPointSize(10)
         font.setBold(True)
         self.width_label.setFont(font)
-        self.width_label.setStyleSheet("color: #2C3E50; background: transparent;")
+        
+        # 固定白色主题标签颜色
+        self.width_label.setStyleSheet("color: #2C3E50; background: transparent; font-weight: bold;")
         
         self.eraser_btn = ModernButton("🧽 橡皮", button_type="secondary")
         self.eraser_btn.setCheckable(True)
@@ -322,15 +333,18 @@ class DoodleBoard(QWidget):
         font.setPointSize(10)
         font.setBold(True)
         self.zoom_label.setFont(font)
+        
+        # 固定白色主题缩放标签样式
         self.zoom_label.setStyleSheet("""
             QLabel {
                 color: #2C3E50; 
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ECF0F1, stop:1 #BDC3C7);
-                border: 1px solid #95A5A6;
+                    stop:0 #FFFFFF, stop:1 #F8F9FA);
+                border: 1px solid #6C757D;
                 border-radius: 4px;
                 min-width: 50px;
                 padding: 4px 8px;
+                font-weight: bold;
             }
         """)
         self.zoom_label.setAlignment(Qt.AlignCenter)
@@ -361,10 +375,12 @@ class DoodleBoard(QWidget):
         # 为缩放控制组添加背景框架
         zoom_frame = QFrame()
         zoom_frame.setLayout(zoom_group_layout)
+        
+        # 固定白色主题缩放控制组背景样式
         zoom_frame.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #F8F9FA, stop:1 #E9ECEF);
+                    stop:0 #FFFFFF, stop:1 #F8F9FA);
                 border: 1px solid #DEE2E6;
                 border-radius: 8px;
                 margin: 2px;
@@ -388,8 +404,50 @@ class DoodleBoard(QWidget):
         self.view.mouseReleaseEvent = self.mouseReleaseEvent
         self.view.wheelEvent = self.wheelEvent
 
+    def get_color_dialog(self, initial_color):
+        """创建固定白色主题的颜色选择器对话框"""
+        # 使用简单的颜色选择器，不设置复杂样式
+        dialog = QColorDialog(initial_color, self)
+        dialog.setWindowTitle("选择颜色")
+        
+        # 设置对话框为模态
+        dialog.setModal(True)
+        
+        # 简单的白色主题样式，只针对关键元素
+        dialog.setStyleSheet("""
+            QColorDialog {
+                background-color: white;
+                color: black;
+            }
+            QColorDialog QLabel {
+                color: black;
+                background-color: transparent;
+            }
+            QColorDialog QLineEdit {
+                background-color: white;
+                color: black;
+                border: 1px solid gray;
+            }
+            QColorDialog QSpinBox {
+                background-color: white;
+                color: black;
+                border: 1px solid gray;
+            }
+            QColorDialog QPushButton {
+                background-color: #007BFF;
+                color: white;
+                border: 1px solid #0056B3;
+                padding: 4px 8px;
+            }
+        """)
+        
+        return dialog
+
     def choose_color(self):
-        color = QColorDialog.getColor(self.current_color, self, "选择颜色")
+        """选择颜色"""
+        dialog = self.get_color_dialog(self.current_color)
+        if dialog.exec() == QColorDialog.Accepted:
+            color = dialog.selectedColor()
         if color.isValid():
             self.current_color = color
             self.color_btn.set_color(color)
@@ -406,7 +464,10 @@ class DoodleBoard(QWidget):
             self.color_btn.set_color(self.current_color)
         else:
             if self.current_color == QColor(Qt.white):
-                color = QColorDialog.getColor(QColor(Qt.black), self, "选择颜色")
+                # 使用相同的白色主题颜色选择器
+                dialog = self.get_color_dialog(QColor(Qt.black))
+                if dialog.exec() == QColorDialog.Accepted:
+                    color = dialog.selectedColor()
                 if color.isValid():
                     self.current_color = color
                     self.color_btn.set_color(color)
@@ -671,6 +732,10 @@ class CanvasWindow(QMainWindow):
         self.username = username
         self.dds_manager = dds_manager
         self.dds_components = {}
+        
+        # 固定使用白色主题
+        self.is_dark_theme = False
+        
         self.init_ui()
         # 不在这里初始化DDS，而是在open_canvas_window中初始化
         
@@ -679,22 +744,23 @@ class CanvasWindow(QMainWindow):
         self.setWindowTitle(f"🎨 共享画板 - {self.username}")
         self.setGeometry(100, 100, 900, 600)
         
-        # 设置现代化样式
+        # 固定白色主题样式
         self.setStyleSheet("""
             QMainWindow {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ECF0F1, stop:1 #BDC3C7);
-                border: 1px solid #95A5A6;
+                    stop:0 #F8F9FA, stop:1 #E9ECEF);
+                border: 1px solid #DEE2E6;
             }
             QGraphicsView {
                 background-color: white;
-                border: 2px solid #34495E;
+                border: 2px solid #6C757D;
                 border-radius: 10px;
                 margin: 10px;
             }
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #34495E, stop:1 #2C3E50);
+                    stop:0 #FFFFFF, stop:1 #F8F9FA);
+                border: 1px solid #DEE2E6;
                 border-radius: 8px;
                 margin: 5px;
             }
@@ -781,7 +847,6 @@ class CanvasWindow(QMainWindow):
         try:
             if 'participant' in self.dds_components:
                 participant = self.dds_components['participant']
-                # 这里可以添加更多的清理代码
                 print("✅ DDS资源清理完成")
         except Exception as e:
             print(f"[错误] 清理资源时出错: {e}")

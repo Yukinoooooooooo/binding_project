@@ -242,21 +242,6 @@ class ChatUI(QWidget):
         header_layout.setContentsMargins(20, 15, 20, 15)
         header_layout.setSpacing(15)
         
-        # 圆形图标
-        icon_label = QLabel("BP")
-        icon_label.setFixedSize(50, 50)
-        icon_label.setStyleSheet("""
-            QLabel {
-                background-color: #4299e1;
-                border-radius: 25px;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                font-family: 'Microsoft YaHei';
-            }
-        """)
-        icon_label.setAlignment(Qt.AlignCenter)
-        
         # 标题文字 - 作为主题名字
         title_layout = QVBoxLayout()
         title_layout.setSpacing(2)
@@ -272,7 +257,6 @@ class ChatUI(QWidget):
         title_layout.addWidget(club_label)
         title_layout.addWidget(main_title)
         
-        header_layout.addWidget(icon_label)
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
         
@@ -1292,14 +1276,10 @@ class ChatUI(QWidget):
             if topic not in self.online_users:
                 self.online_users[topic] = set()
             
-            # 检查是否已经处理过该用户的加入
-            if username in self.joined_users[topic]:
-                # 确保用户在线状态正确，但不重复显示消息
-                if username not in self.online_users[topic]:
-                    self.online_users[topic].add(username)
-                    print(f"[调试] 用户重新加入: {username} 加入 {topic}")
-                print(f"[调试] 用户 {username} 已经处理过加入 {topic}，跳过")
-                return  # 已经显示过加入消息，不再显示
+            # 检查是否已经处理过该用户的加入（但允许重新加入时显示消息）
+            if username in self.joined_users[topic] and username in self.online_users[topic]:
+                print(f"[调试] 用户 {username} 已经在 {topic} 中，跳过重复处理")
+                return  # 用户已经在在线列表中，跳过
             
             print(f"[调试] 用户加入: {username} 加入 {topic}")
             
@@ -1347,6 +1327,11 @@ class ChatUI(QWidget):
             if topic in self.online_users and username in self.online_users[topic]:
                 self.online_users[topic].remove(username)
                 print(f"[调试] 已从在线用户列表移除: {username}")
+            
+            # 从已加入用户列表中移除，允许重新加入时显示消息
+            if topic in self.joined_users and username in self.joined_users[topic]:
+                self.joined_users[topic].remove(username)
+                print(f"[调试] 已从已加入用户列表移除: {username}")
             
             # 确保自己始终在在线用户列表中
             if topic in self.online_users:

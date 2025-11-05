@@ -9,8 +9,11 @@ from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QSlider, QSizePolicy
+    QFrame, QSlider, QSizePolicy, QListWidget, QListWidgetItem
 )
+
+# 导入游戏结束界面函数
+from end import draw_game_over_screen, get_score_level, draw_game_over_decorations
 
 
 @dataclass
@@ -228,6 +231,26 @@ class SnakeCanvas(QWidget):
         self.bg_color = QColor(26, 32, 44)
         self.food_color = QColor(255, 107, 107)
         self.remote_snakes: Dict[int, Dict] = {}
+        
+        # 游戏结束界面相关变量
+        self.game_over_alpha = 0  # 游戏结束界面透明度
+        self.final_score = 0  # 最终分数
+        self.game_over_timer = QTimer(self)  # 游戏结束动画定时器
+        self.game_over_timer.timeout.connect(self.update_game_over_alpha)
+
+    def update_game_over_alpha(self):
+        """更新游戏结束界面透明度"""
+        if self.game_over_alpha < 200:
+            self.game_over_alpha += 5
+            self.update()
+        else:
+            self.game_over_timer.stop()
+
+    def start_game_over_animation(self, final_score):
+        """开始游戏结束动画"""
+        self.final_score = final_score
+        self.game_over_alpha = 0
+        self.game_over_timer.start(50)  # 每50毫秒更新一次
 
     def calculate_cell_size(self):
         """计算自适应的格子大小和居中偏移"""
@@ -338,8 +361,8 @@ class SnakeCanvas(QWidget):
         painter.setBrush(QBrush(eye_color))
         painter.drawEllipse(right_eye_x, right_eye_y, eye_size, eye_size)
     
-    def draw_remote_snake_eyes(self, painter, sx, sy, head_seg):
-        """绘制远端蛇头眼睛 - 紧凑的黑点"""
+    def draw_remote_snake_eyes(self, painter, sx, sy, head_seg, snake_body):
+        """绘制远端蛇头眼睛 - 根据移动方向绘制"""
         # 远端蛇眼睛颜色（深灰色，与本地蛇区分）
         eye_color = QColor(50, 50, 50)  # 深灰色眼睛
         
@@ -347,11 +370,34 @@ class SnakeCanvas(QWidget):
         eye_size = max(3, int(self.cell * 0.12))  # 格子大小的12%，最小3像素
         eye_offset = max(3, int(self.cell * 0.25))  # 格子大小的25%，最小3像素
         
-        # 由于远端蛇没有方向信息，默认眼睛在右侧，上下排列
-        left_eye_x = sx + self.cell - eye_offset - eye_size
-        right_eye_x = sx + self.cell - eye_offset - eye_size
-        left_eye_y = sy + eye_offset
-        right_eye_y = sy + self.cell - eye_offset - eye_size
+        # 根据蛇身推断移动方向
+        direction = self.infer_remote_snake_direction(snake_body)
+        
+        # 根据方向确定眼睛位置
+        if direction == Direction.RIGHT:
+            # 向右移动：眼睛在右侧，上下排列
+            left_eye_x = sx + self.cell - eye_offset - eye_size
+            right_eye_x = sx + self.cell - eye_offset - eye_size
+            left_eye_y = sy + eye_offset
+            right_eye_y = sy + self.cell - eye_offset - eye_size
+        elif direction == Direction.LEFT:
+            # 向左移动：眼睛在左侧，上下排列
+            left_eye_x = sx + eye_offset
+            right_eye_x = sx + eye_offset
+            left_eye_y = sy + eye_offset
+            right_eye_y = sy + self.cell - eye_offset - eye_size
+        elif direction == Direction.UP:
+            # 向上移动：眼睛在上方，左右排列
+            left_eye_x = sx + eye_offset
+            right_eye_x = sx + self.cell - eye_offset - eye_size
+            left_eye_y = sy + eye_offset
+            right_eye_y = sy + eye_offset
+        else:  # DOWN
+            # 向下移动：眼睛在下方，左右排列
+            left_eye_x = sx + eye_offset
+            right_eye_x = sx + self.cell - eye_offset - eye_size
+            left_eye_y = sy + self.cell - eye_offset - eye_size
+            right_eye_y = sy + self.cell - eye_offset - eye_size
         
         # 绘制左眼（深灰色圆点）
         painter.setBrush(QBrush(eye_color))
@@ -361,6 +407,35 @@ class SnakeCanvas(QWidget):
         # 绘制右眼（深灰色圆点）
         painter.setBrush(QBrush(eye_color))
         painter.drawEllipse(right_eye_x, right_eye_y, eye_size, eye_size)
+
+    def infer_remote_snake_direction(self, snake_body):
+        """根据蛇身推断远端蛇的移动方向"""
+        if len(snake_body) < 2:
+            return Direction.RIGHT  # 默认向右
+        
+        # 获取蛇头和第二节的位置
+        head = snake_body[0]
+        neck = snake_body[1]
+        
+        head_x = head.get("x", 0)
+        head_y = head.get("y", 0)
+        neck_x = neck.get("x", 0)
+        neck_y = neck.get("y", 0)
+        
+        # 计算移动方向
+        dx = head_x - neck_x
+        dy = head_y - neck_y
+        
+        if dx > 0:
+            return Direction.RIGHT
+        elif dx < 0:
+            return Direction.LEFT
+        elif dy > 0:
+            return Direction.DOWN
+        elif dy < 0:
+            return Direction.UP
+        else:
+            return Direction.RIGHT  # 默认向右
 
     def paintEvent(self, _):
         painter = QPainter(self)
@@ -421,7 +496,11 @@ class SnakeCanvas(QWidget):
                 
                 # 为远端蛇头添加眼睛
                 if i == 0:
-                    self.draw_remote_snake_eyes(painter, sx, sy, seg)
+                    self.draw_remote_snake_eyes(painter, sx, sy, seg, body)
+
+        # 如果游戏结束，绘制游戏结束界面
+        if self.logic.game_over and self.game_over_alpha > 0:
+            draw_game_over_screen(self, painter)
 
 
 class Snake(QWidget):
@@ -449,6 +528,9 @@ class Snake(QWidget):
         self.user_id = user_id
         self.enable_dds = enable_dds
         self.dds = None
+        
+        # 排行榜数据管理
+        self.leaderboard_data = {}  # {user_id: {"username": str, "score": int, "is_self": bool}}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
@@ -480,22 +562,109 @@ class Snake(QWidget):
         self.status_label = QLabel("就绪")
         self.score_label = QLabel("分数：0")
         self.remote_label = QLabel("其他玩家：0")
-        for lb in (self.status_label, self.score_label, self.remote_label):
-            lb.setStyleSheet("color:#E2E8F0;")
-            panel_layout.addWidget(lb)
+        
+        # 设置状态标签样式
+        self.status_label.setStyleSheet("""
+            color: #E2E8F0; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-size: 14px; 
+            font-weight: 500;
+            padding: 6px 0px;
+        """)
+        panel_layout.addWidget(self.status_label)
+        
+        # 设置分数标签样式（更突出）
+        self.score_label.setStyleSheet("""
+            color: #4ECDC4; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-size: 16px; 
+            font-weight: bold;
+            padding: 8px 12px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 rgba(78, 205, 196, 0.1), stop:1 rgba(78, 205, 196, 0.05));
+            border-radius: 8px;
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        """)
+        panel_layout.addWidget(self.score_label)
+        
+        # 设置其他玩家标签样式
+        self.remote_label.setStyleSheet("""
+            color: #A0AEC0; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-size: 13px; 
+            font-weight: 400;
+            padding: 4px 0px;
+        """)
+        panel_layout.addWidget(self.remote_label)
 
         self.btn_start = QPushButton("开始")
-        self.btn_pause = QPushButton("暂停")
         self.btn_reset = QPushButton("重置")
-        self.btn_pause.setEnabled(False)
+        
+        # 美化开始按钮
+        self.btn_start.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #4ECDC4, stop:1 #45B7B8);
+                color: #1a202c;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 14px;
+                font-weight: bold;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #76EAD7, stop:1 #6BDDDD);
+                transform: translateY(-1px);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #3BB5B6, stop:1 #3A9B9C);
+                transform: translateY(1px);
+            }
+        """)
+        
+        # 美化重置按钮
+        self.btn_reset.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #FF6B6B, stop:1 #FF5252);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 14px;
+                font-weight: bold;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #FF8E8E, stop:1 #FF7979);
+                transform: translateY(-1px);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #E55555, stop:1 #E53E3E);
+                transform: translateY(1px);
+            }
+        """)
+        
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.btn_start)
-        btn_row.addWidget(self.btn_pause)
         btn_row.addWidget(self.btn_reset)
         panel_layout.addLayout(btn_row)
 
-        speed_title = QLabel("速度 (毫秒/步)")
-        speed_title.setStyleSheet("color:#CBD5E0;")
+        speed_title = QLabel("⚡ 速度控制")
+        speed_title.setStyleSheet("""
+            color: #E2E8F0; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-size: 14px; 
+            font-weight: 600;
+            padding: 8px 0px 4px 0px;
+        """)
         panel_layout.addWidget(speed_title)
 
         speed_row = QHBoxLayout()
@@ -503,18 +672,100 @@ class Snake(QWidget):
         self.slider.setRange(60, 400)
         self.slider.setValue(self.interval_ms)
         self.slider.valueChanged.connect(self.on_speed_change)
+        
+        # 美化滑块样式
+        self.slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #4A5568;
+                height: 6px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 #2D3748, stop:1 #4A5568);
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #4ECDC4, stop:1 #45B7B8);
+                border: 2px solid #1a202c;
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                margin: -6px 0;
+            }
+            QSlider::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #76EAD7, stop:1 #6BDDDD);
+            }
+        """)
+        
         self.speed_value_label = QLabel(str(self.interval_ms))
-        self.speed_value_label.setStyleSheet("color:#CBD5E0; min-width:40px;")
+        self.speed_value_label.setStyleSheet("""
+            color: #4ECDC4; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-size: 16px; 
+            font-weight: bold;
+            min-width: 50px;
+            padding: 4px 8px;
+            background: rgba(78, 205, 196, 0.1);
+            border-radius: 6px;
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        """)
         speed_row.addWidget(self.slider, 1)
         speed_row.addWidget(self.speed_value_label)
         panel_layout.addLayout(speed_row)
+
+        # 在线玩家排行榜
+        leaderboard_title = QLabel("🏆排行榜")
+        leaderboard_title.setStyleSheet("""
+            color: #FFD700; 
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            font-weight: bold; 
+            font-size: 16px;
+            margin-top: 20px;
+            padding: 8px 12px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                stop:0 rgba(255, 215, 0, 0.15), stop:1 rgba(255, 215, 0, 0.05));
+            border-radius: 8px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        """)
+        leaderboard_title.setAlignment(Qt.AlignCenter)
+        panel_layout.addWidget(leaderboard_title)
+        
+        # 排行榜列表
+        self.leaderboard_list = QListWidget()
+        self.leaderboard_list.setMaximumHeight(200)
+        self.leaderboard_list.setStyleSheet("""
+            QListWidget {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #2d3748, stop:1 #1a202c);
+                border: 2px solid #4a5568;
+                border-radius: 8px;
+                color: #e2e8f0;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QListWidget::item {
+                padding: 8px 12px;
+                border-bottom: 1px solid rgba(74, 85, 104, 0.3);
+                margin: 2px;
+                border-radius: 4px;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(66, 153, 225, 0.1);
+                border: 1px solid rgba(66, 153, 225, 0.3);
+            }
+            QListWidget::item:selected {
+                background-color: rgba(66, 153, 225, 0.2);
+                border: 1px solid rgba(66, 153, 225, 0.5);
+            }
+        """)
+        panel_layout.addWidget(self.leaderboard_list)
 
         panel_layout.addStretch(1)
         body.addWidget(panel, 0)
 
         # 绑定事件
         self.btn_start.clicked.connect(self.start)
-        self.btn_pause.clicked.connect(self.pause)
         self.btn_reset.clicked.connect(self.reset)
 
         # 初始化DDS（仅发布本地状态）
@@ -544,14 +795,10 @@ class Snake(QWidget):
         self.timer.start(self.interval_ms)
         self.status_label.setText("进行中…")
         self.btn_start.setEnabled(False)
-        self.btn_pause.setEnabled(True)
+        # 更新排行榜
+        self.update_leaderboard_data()
+        self.update_leaderboard_display()
         self.canvas.setFocus()
-
-    def pause(self):
-        self.timer.stop()
-        self.status_label.setText("已暂停")
-        self.btn_start.setEnabled(True)
-        self.btn_pause.setEnabled(False)
 
     def reset(self):
         self.timer.stop()
@@ -560,13 +807,23 @@ class Snake(QWidget):
         self.status_label.setText("就绪")
         self.score_label.setText("分数：0")
         self.btn_start.setEnabled(True)
-        self.btn_pause.setEnabled(False)
+        # 重置游戏结束界面状态
+        self.canvas.game_over_alpha = 0
+        self.canvas.game_over_timer.stop()
+        # 更新排行榜
+        self.update_leaderboard_data()
+        self.update_leaderboard_display()
         self.canvas.update()
         self.canvas.setFocus()
 
     def on_tick(self):
         state = self.logic.step(self.canvas.remote_snakes)
         self.score_label.setText(f"分数：{state['score']}")
+        
+        # 更新排行榜
+        self.update_leaderboard_data()
+        self.update_leaderboard_display()
+        
         self.canvas.update()
         # 每步通过DDS发送蛇与食物位置
         if self.dds:
@@ -580,7 +837,8 @@ class Snake(QWidget):
             self.timer.stop()
             self.status_label.setText("游戏结束")
             self.btn_start.setEnabled(True)
-            self.btn_pause.setEnabled(False)
+            # 开始游戏结束界面动画
+            self.canvas.start_game_over_animation(state["score"])
 
     def on_remote_state(self, user: str, user_id: int, payload: dict):
         # 保存远端状态并刷新画布
@@ -596,7 +854,81 @@ class Snake(QWidget):
         
         # 更新远端玩家数量显示
         self.remote_label.setText(f"其他玩家：{len(self.canvas.remote_snakes)}")
+        
+        # 更新排行榜数据
+        self.update_leaderboard_data()
+        self.update_leaderboard_display()
         self.canvas.update()
+
+    def update_leaderboard_data(self):
+        """更新排行榜数据"""
+        # 添加自己的数据
+        self.leaderboard_data[self.user_id] = {
+            "username": self.username,
+            "score": self.logic.score,
+            "is_self": True
+        }
+        
+        # 添加其他玩家的数据
+        for user_id, payload in self.canvas.remote_snakes.items():
+            if not payload.get("over", False):  # 只显示未结束的玩家
+                self.leaderboard_data[user_id] = {
+                    "username": payload.get("user", f"玩家{user_id}"),
+                    "score": payload.get("score", 0),
+                    "is_self": False
+                }
+
+    def update_leaderboard_display(self):
+        """更新排行榜显示"""
+        # 按分数降序排序
+        sorted_players = sorted(
+            self.leaderboard_data.values(),
+            key=lambda x: x["score"],
+            reverse=True
+        )
+        
+        # 清空列表
+        self.leaderboard_list.clear()
+        
+        # 添加排序后的玩家
+        for i, player in enumerate(sorted_players):
+            rank = i + 1
+            username = player["username"]
+            score = player["score"]
+            is_self = player["is_self"]
+            
+            # 设置显示文本和样式
+            if is_self:
+                if rank == 1:
+                    item_text = f"👑 {rank}. {username} (你) - {score}分"
+                    item_color = "#FFD700"  # 金色
+                elif rank == 2:
+                    item_text = f"🥈 {rank}. {username} (你) - {score}分"
+                    item_color = "#C0C0C0"  # 银色
+                elif rank == 3:
+                    item_text = f"🥉 {rank}. {username} (你) - {score}分"
+                    item_color = "#CD7F32"  # 铜色
+                else:
+                    item_text = f"⭐ {rank}. {username} (你) - {score}分"
+                    item_color = "#FFD700"  # 金色
+            else:
+                if rank == 1:
+                    item_text = f"👑 {rank}. {username} - {score}分"
+                    item_color = "#FFD700"  # 金色
+                elif rank == 2:
+                    item_text = f"🥈 {rank}. {username} - {score}分"
+                    item_color = "#C0C0C0"  # 银色
+                elif rank == 3:
+                    item_text = f"🥉 {rank}. {username} - {score}分"
+                    item_color = "#CD7F32"  # 铜色
+                else:
+                    item_text = f"🎯 {rank}. {username} - {score}分"
+                    item_color = "#E2E8F0"  # 普通颜色
+            
+            # 创建列表项
+            item = QListWidgetItem(item_text)
+            item.setForeground(QColor(item_color))
+            self.leaderboard_list.addItem(item)
 
     def closeEvent(self, event):
         try:
@@ -608,7 +940,17 @@ class Snake(QWidget):
 
 def main():
     app = QApplication(sys.argv)
-    w = Snake()
+    
+    # 获取用户输入（使用对话框）
+    from username_dialog import get_username_from_dialog
+    username, user_id = get_username_from_dialog()
+    
+    # 如果用户取消了输入，退出程序
+    if username is None:
+        print("用户取消了登录，程序退出")
+        return
+    
+    w = Snake(username, user_id)
     w.resize(1200, 800)  # 增加窗口大小以适应更大的游戏区域
     w.show()
     sys.exit(app.exec())

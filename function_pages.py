@@ -67,26 +67,11 @@ class CanvasPage(QWidget):
         """)
         self.start_canvas_btn.clicked.connect(self.open_canvas)
         
-        # 功能说明
-        features_label = QLabel("""
-        <h3>功能特点：</h3>
-        <ul>
-        <li>🎨 实时共享绘画</li>
-        <li>👥 多用户协作</li>
-        <li>🎯 颜色和粗细调节</li>
-        <li>🧹 橡皮擦功能</li>
-        <li>🏷️ 用户标签显示</li>
-        </ul>
-        """)
-        features_label.setFont(QFont("Microsoft YaHei", 10))
-        features_label.setStyleSheet("color: #e2e8f0; margin-top: 30px;")
-        
         # 添加到布局
         layout.addStretch()
         layout.addWidget(title_label)
         layout.addWidget(desc_label)
         layout.addWidget(self.start_canvas_btn)
-        layout.addWidget(features_label)
         layout.addStretch()
         
     def open_canvas(self):

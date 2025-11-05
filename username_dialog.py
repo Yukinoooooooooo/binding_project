@@ -9,7 +9,7 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QLineEdit, QPushButton, QMessageBox, QApplication)
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPalette
 
 
 class UsernameDialog(QDialog):
@@ -24,6 +24,9 @@ class UsernameDialog(QDialog):
         self.setFixedSize(400, 260)
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint)
         
+        # 检测系统主题
+        self.is_dark_theme = self.detect_dark_theme()
+        
         # 设置窗口居中
         self.center_window()
         
@@ -32,6 +35,17 @@ class UsernameDialog(QDialog):
         
         # 设置默认焦点到输入框
         self.username_input.setFocus()
+    
+    def detect_dark_theme(self):
+        """检测系统是否使用深色主题"""
+        try:
+            palette = QApplication.palette()
+            # 检查窗口背景色是否较暗
+            window_color = palette.color(QPalette.Window)
+            # 如果背景色的亮度较低，认为是深色主题
+            return window_color.lightness() < 128
+        except:
+            return False
         
     def center_window(self):
         """将窗口居中显示"""
@@ -61,26 +75,59 @@ class UsernameDialog(QDialog):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #2D3748; margin-bottom: 10px;")
+        
+        # 根据主题设置标题颜色
+        if self.is_dark_theme:
+            title_label.setStyleSheet("color: #E2E8F0; margin-bottom: 10px;")
+        else:
+            title_label.setStyleSheet("color: #2D3748; margin-bottom: 10px;")
         layout.addWidget(title_label)
         
         # 用户名输入框
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("请输入用户名")
-        self.username_input.setStyleSheet("""
-            QLineEdit {
-                padding: 15px;
-                border: 2px solid #E2E8F0;
-                border-radius: 8px;
-                font-size: 14px;
-                background-color: white;
-                min-height: 20px;
-            }
-            QLineEdit:focus {
-                border-color: #3182CE;
-                outline: none;
-            }
-        """)
+        
+        # 根据主题设置输入框样式
+        if self.is_dark_theme:
+            self.username_input.setStyleSheet("""
+                QLineEdit {
+                    padding: 15px;
+                    border: 2px solid #4A5568;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    background-color: #2D3748;
+                    color: #E2E8F0;
+                    min-height: 20px;
+                }
+                QLineEdit:focus {
+                    border-color: #3182CE;
+                    outline: none;
+                }
+                QLineEdit::placeholder {
+                    color: #A0AEC0;
+                    font-style: italic;
+                }
+            """)
+        else:
+            self.username_input.setStyleSheet("""
+                QLineEdit {
+                    padding: 15px;
+                    border: 2px solid #E2E8F0;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    background-color: white;
+                    color: #2D3748;
+                    min-height: 20px;
+                }
+                QLineEdit:focus {
+                    border-color: #3182CE;
+                    outline: none;
+                }
+                QLineEdit::placeholder {
+                    color: #718096;
+                    font-style: italic;
+                }
+            """)
         layout.addWidget(self.username_input)
         
         # 按钮布局
@@ -89,45 +136,84 @@ class UsernameDialog(QDialog):
         
         # 确认按钮
         self.confirm_button = QPushButton("确认")
-        self.confirm_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3182CE;
-                color: white;
-                border: none;
-                padding: 15px 24px;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #2C5AA0;
-            }
-            QPushButton:pressed {
-                background-color: #1E3A8A;
-            }
-        """)
+        if self.is_dark_theme:
+            self.confirm_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #3182CE;
+                    color: white;
+                    border: none;
+                    padding: 15px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    min-height: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #2C5AA0;
+                }
+                QPushButton:pressed {
+                    background-color: #1E3A8A;
+                }
+            """)
+        else:
+            self.confirm_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #3182CE;
+                    color: white;
+                    border: none;
+                    padding: 15px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    min-height: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #2C5AA0;
+                }
+                QPushButton:pressed {
+                    background-color: #1E3A8A;
+                }
+            """)
         self.confirm_button.clicked.connect(self.confirm_input)
         
         # 取消按钮
         self.cancel_button = QPushButton("取消")
-        self.cancel_button.setStyleSheet("""
-            QPushButton {
-                background-color: #E2E8F0;
-                color: #4A5568;
-                border: 1px solid #CBD5E0;
-                padding: 15px 24px;
-                border-radius: 8px;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #CBD5E0;
-            }
-            QPushButton:pressed {
-                background-color: #A0AEC0;
-            }
-        """)
+        if self.is_dark_theme:
+            self.cancel_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #4A5568;
+                    color: #E2E8F0;
+                    border: 1px solid #718096;
+                    padding: 15px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    min-height: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #718096;
+                }
+                QPushButton:pressed {
+                    background-color: #A0AEC0;
+                }
+            """)
+        else:
+            self.cancel_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #E2E8F0;
+                    color: #4A5568;
+                    border: 1px solid #CBD5E0;
+                    padding: 15px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    min-height: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #CBD5E0;
+                }
+                QPushButton:pressed {
+                    background-color: #A0AEC0;
+                }
+            """)
         self.cancel_button.clicked.connect(self.reject)
         
         button_layout.addWidget(self.confirm_button)
